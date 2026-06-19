@@ -51,10 +51,18 @@ public class BookingStatusHistory {
     @Column(name = "transitioned_at", nullable = false, updatable = false)
     private Instant transitionedAt;
 
+    @Column(name = "reason", length = 500)
+    private String reason;
+
     public BookingStatusHistory(UUID id, BookingStatus previousStatus, BookingStatus newStatus) {
+        this(id, previousStatus, newStatus, null);
+    }
+
+    public BookingStatusHistory(UUID id, BookingStatus previousStatus, BookingStatus newStatus, String reason) {
         this.id = id;
         this.previousStatus = previousStatus;
         this.newStatus = newStatus;
+        this.reason = reason;
     }
 
     /** Called only by {@link Booking#addStatusHistory(BookingStatusHistory)}. */

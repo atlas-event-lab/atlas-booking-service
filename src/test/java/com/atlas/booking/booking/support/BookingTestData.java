@@ -6,6 +6,7 @@ import com.atlas.booking.booking.client.dto.TripItemResponse;
 import com.atlas.booking.booking.dto.ApiBookingStatus;
 import com.atlas.booking.booking.dto.BookingItemSelectionRequest;
 import com.atlas.booking.booking.dto.BookingResponse;
+import com.atlas.booking.booking.dto.CancelBookingRequest;
 import com.atlas.booking.booking.dto.CreateBookingRequest;
 import com.atlas.booking.booking.dto.MoneyResponse;
 import com.atlas.booking.booking.dto.TravelerRequest;
@@ -24,13 +25,16 @@ public final class BookingTestData {
 
     public static final UUID BOOKING_ID      = UUID.fromString("00000000-0000-0000-0000-000000000001");
     public static final UUID USER_ID         = UUID.fromString("00000000-0000-0000-0000-000000000002");
+    public static final UUID OTHER_USER_ID   = UUID.fromString("00000000-0000-0000-0000-000000000010");
     public static final UUID TRIP_ID         = UUID.fromString("00000000-0000-0000-0000-000000000003");
     public static final UUID RESOURCE_ID     = UUID.fromString("00000000-0000-0000-0000-000000000004");
     public static final UUID PAYMENT_ID      = UUID.fromString("00000000-0000-0000-0000-000000000005");
     public static final UUID EVENT_ID        = UUID.fromString("00000000-0000-0000-0000-000000000006");
     public static final UUID SAGA_ID         = UUID.fromString("00000000-0000-0000-0000-000000000099");
-    public static final String CORRELATION_ID    = "test-correlation-id";
-    public static final String IDEMPOTENCY_KEY   = "test-idempotency-key";
+    public static final String CORRELATION_ID              = "test-correlation-id";
+    public static final String IDEMPOTENCY_KEY             = "test-idempotency-key";
+    public static final String CANCELLATION_IDEMPOTENCY_KEY = "test-cancellation-idempotency-key";
+    public static final String CANCELLATION_REASON         = "Change of plans";
     public static final BigDecimal TOTAL_AMOUNT  = new BigDecimal("500.00");
     public static final String CURRENCY          = "USD";
 
@@ -93,5 +97,25 @@ public final class BookingTestData {
                 ApiBookingStatus.PENDING,
                 new MoneyResponse(TOTAL_AMOUNT, CURRENCY),
                 Instant.parse("2026-06-17T00:00:00Z"));
+    }
+
+    public static BookingResponse aBookingResponseWithStatus(ApiBookingStatus status) {
+        return new BookingResponse(
+                BOOKING_ID, TRIP_ID, status,
+                new MoneyResponse(TOTAL_AMOUNT, CURRENCY),
+                Instant.parse("2026-06-17T00:00:00Z"));
+    }
+
+    public static CancelBookingRequest aCancelBookingRequest() {
+        return new CancelBookingRequest(CANCELLATION_REASON);
+    }
+
+    public static Booking aBookingOwnedByOtherUser(BookingStatus status) {
+        return new Booking(
+                BOOKING_ID, OTHER_USER_ID, TRIP_ID,
+                status,
+                new Money(TOTAL_AMOUNT, CURRENCY),
+                CORRELATION_ID, SAGA_ID,
+                IDEMPOTENCY_KEY, "some-hash");
     }
 }

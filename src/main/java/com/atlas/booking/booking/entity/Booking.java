@@ -82,6 +82,10 @@ public class Booking {
     @Column(name = "request_hash", length = 64)
     private String requestHash;
 
+    @Setter
+    @Column(name = "cancellation_idempotency_key", unique = true, length = 255)
+    private String cancellationIdempotencyKey;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

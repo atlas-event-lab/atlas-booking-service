@@ -73,6 +73,25 @@ public class BookingEventConsumer {
         bookingService.onInventoryRejected(eventId, bookingId);
     }
 
+    // ── Inventory: cancellation ───────────────────────────────────────────────
+
+    @RetryableTopic(
+            attempts = "4",
+            backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
+            dltTopicSuffix = ".dlq",
+            exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
+                       IllegalArgumentException.class}
+    )
+    @KafkaListener(topics = EventTopics.INVENTORY_BOOKING_RELEASED,
+                   groupId = "${spring.kafka.consumer.group-id}")
+    public void onInventoryReleased(Map<String, Object> envelope) {
+        UUID eventId   = extractEventId(envelope);
+        UUID bookingId = extractBookingId(extractPayload(envelope));
+
+        log.debug("Received InventoryReleased: eventId={}, bookingId={}", eventId, bookingId);
+        bookingService.onInventoryReleased(eventId, bookingId);
+    }
+
     // ── Payment events ────────────────────────────────────────────────────────
 
     @RetryableTopic(

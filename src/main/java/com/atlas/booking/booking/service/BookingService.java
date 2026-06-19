@@ -1,6 +1,7 @@
 package com.atlas.booking.booking.service;
 
 import com.atlas.booking.booking.dto.BookingResponse;
+import com.atlas.booking.booking.dto.CancelBookingRequest;
 import com.atlas.booking.booking.dto.CreateBookingRequest;
 
 import java.util.UUID;
@@ -27,7 +28,19 @@ public interface BookingService {
      */
     BookingResponse getBooking(UUID bookingId);
 
-    // ── Saga choreography handlers (Phase 6) ─────────────────────────────────
+    // ── Cancellation ─────────────────────────────────────────────────────────
+
+    /**
+     * Cancels a Booking for the authenticated user, or returns the original result when the
+     * Idempotency-Key was already used for the same Booking (EVT-008).
+     * UserId is extracted from the JWT inside the implementation (SEC-004).
+     *
+     * @return the Booking in its resulting state (CANCELLED immediately, or CONFIRMED while
+     *         CANCELLING is in progress for a previously CONFIRMED Booking).
+     */
+    BookingResponse cancelBooking(String idempotencyKey, UUID bookingId, CancelBookingRequest request);
+
+    // ── Saga choreography handlers ────────────────────────────────────────────
 
     /**
      * Transitions Booking from PENDING → INVENTORY_RESERVED.
@@ -59,4 +72,11 @@ public interface BookingService {
      * Idempotent: re-delivered events are silently ignored (EVT-005).
      */
     void onPaymentTimedOut(UUID eventId, UUID bookingId);
+
+    /**
+     * Transitions Booking from CANCELLING → CANCELLED on InventoryReleased.
+     * A Booking already CANCELLED (pre-confirmation cancellation path) is a no-op (EVT-005).
+     * Idempotent: re-delivered events with the same {@code eventId} cause no second transition.
+     */
+    void onInventoryReleased(UUID eventId, UUID bookingId);
 }

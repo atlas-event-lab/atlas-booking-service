@@ -1,9 +1,14 @@
 package com.atlas.booking.booking.controller;
 
+import com.atlas.booking.booking.dto.ApiBookingStatus;
+import com.atlas.booking.booking.dto.CancelBookingRequest;
 import com.atlas.booking.booking.dto.CreateBookingRequest;
+import com.atlas.booking.booking.exception.BookingAccessDeniedException;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
+import com.atlas.booking.booking.exception.BookingNotCancellableException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
 import com.atlas.booking.booking.exception.PricingMismatchException;
+import com.atlas.booking.booking.entity.BookingStatus;
 import com.atlas.booking.booking.service.BookingCreationResult;
 import com.atlas.booking.booking.service.BookingService;
 import com.atlas.booking.booking.support.BookingTestData;
@@ -170,6 +175,147 @@ class BookingControllerTest {
     void getBooking_unauthenticated_returns_401() throws Exception {
         mvc.perform(get(BASE_URL + "/{bookingId}", BookingTestData.BOOKING_ID))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ── POST /api/v1/bookings/{bookingId}/cancellation ───────────────────────
+
+    @Test
+    void cancelBooking_happyPath_returns_200() throws Exception {
+        when(bookingService.cancelBooking(
+                eq(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY),
+                eq(BookingTestData.BOOKING_ID),
+                any(CancelBookingRequest.class)))
+                .thenReturn(BookingTestData.aBookingResponseWithStatus(ApiBookingStatus.CONFIRMED));
+
+        mvc.perform(post(BASE_URL + "/{bookingId}/cancellation", BookingTestData.BOOKING_ID)
+                        .with(jwt())
+                        .header("Idempotency-Key", BookingTestData.CANCELLATION_IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(BookingTestData.aCancelBookingRequest())))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.bookingId").value(BookingTestData.BOOKING_ID.toString()))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+    }
+
+    @Test
+    void cancelBooking_confirmedPath_returns_200_with_CONFIRMED_status() throws Exception {
+        when(bookingService.cancelBooking(
+                eq(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY),
+                eq(BookingTestData.BOOKING_ID),
+                any(CancelBookingRequest.class)))
+                .thenReturn(BookingTestData.aBookingResponseWithStatus(ApiBookingStatus.CONFIRMED));
+
+        mvc.perform(post(BASE_URL + "/{bookingId}/cancellation", BookingTestData.BOOKING_ID)
+                        .with(jwt())
+                        .header("Idempotency-Key", BookingTestData.CANCELLATION_IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(BookingTestData.aCancelBookingRequest())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+    }
+
+    @Test
+    void cancelBooking_withoutBody_returns_200() throws Exception {
+        when(bookingService.cancelBooking(
+                eq(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY),
+                eq(BookingTestData.BOOKING_ID),
+                eq(null)))
+                .thenReturn(BookingTestData.aBookingResponseWithStatus(ApiBookingStatus.CONFIRMED));
+
+        mvc.perform(post(BASE_URL + "/{bookingId}/cancellation", BookingTestData.BOOKING_ID)
+                        .with(jwt())
+                        .header("Idempotency-Key", BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+    }
+
+    @Test
+    void cancelBooking_missingIdempotencyKeyHeader_returns_400() throws Exception {
+        mvc.perform(post(BASE_URL + "/{bookingId}/cancellation", BookingTestData.BOOKING_ID)
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(BookingTestData.aCancelBookingRequest())))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
+    void cancelBooking_unauthenticated_returns_401() throws Exception {
+        mvc.perform(post(BASE_URL + "/{bookingId}/cancellation", BookingTestData.BOOKING_ID)
+                        .header("Idempotency-Key", BookingTestData.CANCELLATION_IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(BookingTestData.aCancelBookingRequest())))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void cancelBooking_notFound_returns_404() throws Exception {
+        when(bookingService.cancelBooking(any(), eq(BookingTestData.BOOKING_ID), any()))
+                .thenThrow(new BookingNotFoundException(BookingTestData.BOOKING_ID));
+
+        mvc.perform(post(BASE_URL + "/{bookingId}/cancellation", BookingTestData.BOOKING_ID)
+                        .with(jwt())
+                        .header("Idempotency-Key", BookingTestData.CANCELLATION_IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(BookingTestData.aCancelBookingRequest())))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
+    void cancelBooking_notOwner_returns_403() throws Exception {
+        when(bookingService.cancelBooking(any(), eq(BookingTestData.BOOKING_ID), any()))
+                .thenThrow(new BookingAccessDeniedException(BookingTestData.BOOKING_ID));
+
+        mvc.perform(post(BASE_URL + "/{bookingId}/cancellation", BookingTestData.BOOKING_ID)
+                        .with(jwt())
+                        .header("Idempotency-Key", BookingTestData.CANCELLATION_IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(BookingTestData.aCancelBookingRequest())))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
+    void cancelBooking_nonCancellableState_returns_409() throws Exception {
+        when(bookingService.cancelBooking(any(), eq(BookingTestData.BOOKING_ID), any()))
+                .thenThrow(new BookingNotCancellableException(BookingTestData.BOOKING_ID, BookingStatus.CANCELLED));
+
+        mvc.perform(post(BASE_URL + "/{bookingId}/cancellation", BookingTestData.BOOKING_ID)
+                        .with(jwt())
+                        .header("Idempotency-Key", BookingTestData.CANCELLATION_IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(BookingTestData.aCancelBookingRequest())))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
+    void cancelBooking_idempotencyConflict_returns_409() throws Exception {
+        when(bookingService.cancelBooking(any(), eq(BookingTestData.BOOKING_ID), any()))
+                .thenThrow(new IdempotencyConflictException(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY));
+
+        mvc.perform(post(BASE_URL + "/{bookingId}/cancellation", BookingTestData.BOOKING_ID)
+                        .with(jwt())
+                        .header("Idempotency-Key", BookingTestData.CANCELLATION_IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(BookingTestData.aCancelBookingRequest())))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
+    void cancelBooking_reasonExceedsMaxLength_returns_400() throws Exception {
+        var request = new CancelBookingRequest("x".repeat(501));
+
+        mvc.perform(post(BASE_URL + "/{bookingId}/cancellation", BookingTestData.BOOKING_ID)
+                        .with(jwt())
+                        .header("Idempotency-Key", BookingTestData.CANCELLATION_IDEMPOTENCY_KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
     }
 
     // ── Validation: travelers list ───────────────────────────────────────────

@@ -1,6 +1,7 @@
 package com.atlas.booking.booking.controller;
 
 import com.atlas.booking.booking.dto.BookingResponse;
+import com.atlas.booking.booking.dto.CancelBookingRequest;
 import com.atlas.booking.booking.dto.CreateBookingRequest;
 import com.atlas.booking.booking.service.BookingService;
 import jakarta.validation.Valid;
@@ -47,5 +48,19 @@ public class BookingController {
     @GetMapping("/{bookingId}")
     public ResponseEntity<BookingResponse> getBooking(@PathVariable UUID bookingId) {
         return ResponseEntity.ok(bookingService.getBooking(bookingId));
+    }
+
+    /**
+     * POST /api/v1/bookings/{bookingId}/cancellation — cancels a Booking (booking.yaml operationId: cancelBooking).
+     * Always returns 200 (new cancellation or idempotent replay). CANCELLING is surfaced as CONFIRMED
+     * for CONFIRMED→CANCELLING paths; final CANCELLED is observable via GET (feature.md §Request Model).
+     */
+    @PostMapping("/{bookingId}/cancellation")
+    public ResponseEntity<BookingResponse> cancelBooking(
+            @PathVariable UUID bookingId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @RequestBody(required = false) @Valid CancelBookingRequest request) {
+
+        return ResponseEntity.ok(bookingService.cancelBooking(idempotencyKey, bookingId, request));
     }
 }

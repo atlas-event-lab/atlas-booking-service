@@ -1,6 +1,8 @@
 package com.atlas.booking.shared.exception;
 
+import com.atlas.booking.booking.exception.BookingAccessDeniedException;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
+import com.atlas.booking.booking.exception.BookingNotCancellableException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
 import com.atlas.booking.booking.exception.InvalidStateTransitionException;
 import com.atlas.booking.booking.exception.PricingMismatchException;
@@ -77,6 +79,26 @@ public class GlobalExceptionHandler {
                 ProblemTypes.NOT_FOUND, "Not Found", request);
 
         return respond(HttpStatus.NOT_FOUND, problem);
+    }
+
+    @ExceptionHandler(BookingAccessDeniedException.class)
+    public ResponseEntity<ProblemDetail> handleAccessDenied(
+            BookingAccessDeniedException ex, HttpServletRequest request) {
+
+        ProblemDetail problem = problemOf(HttpStatus.FORBIDDEN, ex.getMessage(),
+                ProblemTypes.FORBIDDEN, "Forbidden", request);
+
+        return respond(HttpStatus.FORBIDDEN, problem);
+    }
+
+    @ExceptionHandler(BookingNotCancellableException.class)
+    public ResponseEntity<ProblemDetail> handleNotCancellable(
+            BookingNotCancellableException ex, HttpServletRequest request) {
+
+        ProblemDetail problem = problemOf(HttpStatus.CONFLICT, ex.getMessage(),
+                ProblemTypes.CONFLICT, "Booking Not Cancellable", request);
+
+        return respond(HttpStatus.CONFLICT, problem);
     }
 
     @ExceptionHandler({TripNotFoundException.class, PricingMismatchException.class})

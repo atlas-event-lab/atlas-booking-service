@@ -3,7 +3,9 @@ package com.atlas.booking.booking.service;
 import com.atlas.booking.booking.client.SearchClient;
 import com.atlas.booking.booking.entity.Booking;
 import com.atlas.booking.booking.entity.BookingStatus;
+import com.atlas.booking.booking.exception.BookingAccessDeniedException;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
+import com.atlas.booking.booking.exception.BookingNotCancellableException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
 import com.atlas.booking.booking.exception.PricingMismatchException;
 import com.atlas.booking.booking.exception.TripNotFoundException;
@@ -26,6 +28,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -291,6 +294,219 @@ class BookingServiceImplTest {
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.EXPIRED);
         verify(outboxEventWriter).write(any(), eq("BookingExpired"), any(), any(), any());
+    }
+
+    // ── cancelBooking ────────────────────────────────────────────────────────
+
+    @Test
+    void cancelBooking_CONFIRMED_transitions_to_CANCELLING_and_publishes_BookingCancelled() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.CONFIRMED);
+        when(bookingRepository.findByCancellationIdempotencyKey(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+        when(bookingMapper.toResponse(booking)).thenReturn(
+                BookingTestData.aBookingResponseWithStatus(com.atlas.booking.booking.dto.ApiBookingStatus.CONFIRMED));
+
+        bookingService.cancelBooking(
+                BookingTestData.CANCELLATION_IDEMPOTENCY_KEY,
+                BookingTestData.BOOKING_ID,
+                BookingTestData.aCancelBookingRequest());
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLING);
+        assertThat(booking.getCancelledAt()).isNull();
+        assertThat(booking.getCancellationIdempotencyKey()).isEqualTo(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY);
+        verify(outboxEventWriter).write(any(), eq("BookingCancelled"), any(), any(), any());
+    }
+
+    @Test
+    void cancelBooking_PENDING_state_throws_409() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.PENDING);
+        when(bookingRepository.findByCancellationIdempotencyKey(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        assertThatThrownBy(() ->
+                bookingService.cancelBooking(
+                        BookingTestData.CANCELLATION_IDEMPOTENCY_KEY,
+                        BookingTestData.BOOKING_ID,
+                        BookingTestData.aCancelBookingRequest()))
+                .isInstanceOf(BookingNotCancellableException.class);
+
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void cancelBooking_INVENTORY_RESERVED_state_throws_409() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.INVENTORY_RESERVED);
+        when(bookingRepository.findByCancellationIdempotencyKey(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        assertThatThrownBy(() ->
+                bookingService.cancelBooking(
+                        BookingTestData.CANCELLATION_IDEMPOTENCY_KEY,
+                        BookingTestData.BOOKING_ID,
+                        BookingTestData.aCancelBookingRequest()))
+                .isInstanceOf(BookingNotCancellableException.class);
+
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void cancelBooking_reason_is_stored_in_status_history() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.CONFIRMED);
+        when(bookingRepository.findByCancellationIdempotencyKey(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+        when(bookingMapper.toResponse(any())).thenReturn(BookingTestData.aBookingResponse());
+
+        bookingService.cancelBooking(
+                BookingTestData.CANCELLATION_IDEMPOTENCY_KEY,
+                BookingTestData.BOOKING_ID,
+                BookingTestData.aCancelBookingRequest());
+
+        assertThat(booking.getStatusHistory())
+                .filteredOn(h -> h.getNewStatus() == BookingStatus.CANCELLING)
+                .hasSize(1)
+                .first()
+                .satisfies(h -> assertThat(h.getReason()).isEqualTo(BookingTestData.CANCELLATION_REASON));
+    }
+
+    @Test
+    void cancelBooking_idempotentReplay_same_booking_returns_existing_without_republishing() {
+        Booking existing = BookingTestData.aBookingWithStatus(BookingStatus.CANCELLING);
+        when(bookingRepository.findByCancellationIdempotencyKey(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(existing));
+        when(bookingMapper.toResponse(existing)).thenReturn(
+                BookingTestData.aBookingResponseWithStatus(com.atlas.booking.booking.dto.ApiBookingStatus.CONFIRMED));
+
+        bookingService.cancelBooking(
+                BookingTestData.CANCELLATION_IDEMPOTENCY_KEY,
+                BookingTestData.BOOKING_ID,
+                BookingTestData.aCancelBookingRequest());
+
+        verify(bookingRepository, never()).findById(any());
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void cancelBooking_idempotencyConflict_different_booking_throws() {
+        Booking other = BookingTestData.aBookingWithStatus(BookingStatus.CANCELLED);
+        UUID differentBookingId = UUID.fromString("99999999-9999-9999-9999-999999999999");
+        when(bookingRepository.findByCancellationIdempotencyKey(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .thenReturn(Optional.of(other));
+
+        assertThatThrownBy(() ->
+                bookingService.cancelBooking(
+                        BookingTestData.CANCELLATION_IDEMPOTENCY_KEY,
+                        differentBookingId,
+                        BookingTestData.aCancelBookingRequest()))
+                .isInstanceOf(IdempotencyConflictException.class);
+
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void cancelBooking_bookingNotFound_throws() {
+        when(bookingRepository.findByCancellationIdempotencyKey(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+                bookingService.cancelBooking(
+                        BookingTestData.CANCELLATION_IDEMPOTENCY_KEY,
+                        BookingTestData.BOOKING_ID,
+                        BookingTestData.aCancelBookingRequest()))
+                .isInstanceOf(BookingNotFoundException.class);
+    }
+
+    @Test
+    void cancelBooking_notOwner_throws_403() {
+        Booking booking = BookingTestData.aBookingOwnedByOtherUser(BookingStatus.CONFIRMED);
+        when(bookingRepository.findByCancellationIdempotencyKey(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        assertThatThrownBy(() ->
+                bookingService.cancelBooking(
+                        BookingTestData.CANCELLATION_IDEMPOTENCY_KEY,
+                        BookingTestData.BOOKING_ID,
+                        BookingTestData.aCancelBookingRequest()))
+                .isInstanceOf(BookingAccessDeniedException.class);
+
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void cancelBooking_CANCELLING_state_throws_409() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.CANCELLING);
+        when(bookingRepository.findByCancellationIdempotencyKey(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        assertThatThrownBy(() ->
+                bookingService.cancelBooking(
+                        BookingTestData.CANCELLATION_IDEMPOTENCY_KEY,
+                        BookingTestData.BOOKING_ID,
+                        BookingTestData.aCancelBookingRequest()))
+                .isInstanceOf(BookingNotCancellableException.class);
+
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void cancelBooking_CANCELLED_state_throws_409() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.CANCELLED);
+        when(bookingRepository.findByCancellationIdempotencyKey(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        assertThatThrownBy(() ->
+                bookingService.cancelBooking(
+                        BookingTestData.CANCELLATION_IDEMPOTENCY_KEY,
+                        BookingTestData.BOOKING_ID,
+                        BookingTestData.aCancelBookingRequest()))
+                .isInstanceOf(BookingNotCancellableException.class);
+    }
+
+    // ── onInventoryReleased ──────────────────────────────────────────────────
+
+    @Test
+    void onInventoryReleased_CANCELLING_transitions_to_CANCELLED() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.CANCELLING);
+        when(consumedEventRepository.existsById(BookingTestData.EVENT_ID)).thenReturn(false);
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        bookingService.onInventoryReleased(BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLED);
+        assertThat(booking.getCancelledAt()).isNotNull();
+        verify(consumedEventRepository).save(any());
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void onInventoryReleased_already_CANCELLED_is_noop() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.CANCELLED);
+        when(consumedEventRepository.existsById(BookingTestData.EVENT_ID)).thenReturn(false);
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        bookingService.onInventoryReleased(BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLED);
+        verify(consumedEventRepository).save(any());
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void onInventoryReleased_duplicate_event_is_skipped() {
+        when(consumedEventRepository.existsById(BookingTestData.EVENT_ID)).thenReturn(true);
+
+        bookingService.onInventoryReleased(BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID);
+
+        verify(bookingRepository, never()).findById(any());
+        verify(consumedEventRepository, never()).save(any());
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────

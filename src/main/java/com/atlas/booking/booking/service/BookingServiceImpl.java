@@ -5,6 +5,7 @@ import com.atlas.booking.booking.client.dto.TripDetailResponse;
 import com.atlas.booking.booking.client.dto.TripItemResponse;
 import com.atlas.booking.booking.dto.BookingItemSelectionRequest;
 import com.atlas.booking.booking.dto.BookingResponse;
+import com.atlas.booking.booking.dto.CancelBookingRequest;
 import com.atlas.booking.booking.dto.CreateBookingRequest;
 import com.atlas.booking.booking.entity.Booking;
 import com.atlas.booking.booking.entity.BookingItem;
@@ -18,7 +19,9 @@ import com.atlas.booking.booking.event.BookingCreatedPayload;
 import com.atlas.booking.booking.event.BookingItemEvent;
 import com.atlas.booking.booking.event.BookingLifecyclePayload;
 import com.atlas.booking.booking.event.MoneyEvent;
+import com.atlas.booking.booking.exception.BookingAccessDeniedException;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
+import com.atlas.booking.booking.exception.BookingNotCancellableException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
 import com.atlas.booking.booking.exception.PricingMismatchException;
 import com.atlas.booking.booking.exception.TripNotFoundException;
@@ -162,7 +165,56 @@ public class BookingServiceImpl implements BookingService {
     }
 
     // -------------------------------------------------------------------------
-    // Saga choreography handlers (Phase 6)
+    // Cancellation
+    // -------------------------------------------------------------------------
+
+    @Override
+    @Transactional
+    public BookingResponse cancelBooking(String idempotencyKey, UUID bookingId, CancelBookingRequest request) {
+        // Idempotency check (EVT-008)
+        var existing = bookingRepository.findByCancellationIdempotencyKey(idempotencyKey);
+        if (existing.isPresent()) {
+            Booking existingBooking = existing.get();
+            if (!existingBooking.getBookingId().equals(bookingId)) {
+                throw new IdempotencyConflictException(idempotencyKey);
+            }
+            log.info("Idempotent cancel replay: bookingId={}, idempotencyKey={}", bookingId, idempotencyKey);
+            return bookingMapper.toResponse(existingBooking);
+        }
+
+        UUID userId = extractUserId();
+        Booking booking = findBooking(bookingId);
+
+        // Ownership check (SEC-004)
+        if (!booking.getUserId().equals(userId)) {
+            throw new BookingAccessDeniedException(bookingId);
+        }
+
+        BookingStatus from = booking.getStatus();
+        if (from != BookingStatus.CONFIRMED) {
+            throw new BookingNotCancellableException(bookingId, from);
+        }
+        StateTransitionGuard.assertAllowed(from, BookingStatus.CANCELLING);
+
+        booking.setStatus(BookingStatus.CANCELLING);
+        booking.setCancellationIdempotencyKey(idempotencyKey);
+
+        String reason = (request != null) ? request.reason() : null;
+        booking.addStatusHistory(
+                new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.CANCELLING, reason));
+
+        // Write BookingCancelled to the outbox in this same transaction (EVT-009).
+        // The terminal CANCELLED transition (and cancelledAt) is applied later on InventoryReleased.
+        publishLifecycle(booking, "BookingCancelled");
+
+        log.info("Booking cancellation initiated: bookingId={}, userId={}, from={}, to=CANCELLING",
+                bookingId, userId, from);
+
+        return bookingMapper.toResponse(booking);
+    }
+
+    // -------------------------------------------------------------------------
+    // Saga choreography handlers
     // -------------------------------------------------------------------------
 
     @Override
@@ -264,6 +316,34 @@ public class BookingServiceImpl implements BookingService {
         publishLifecycle(booking, "BookingExpired");
 
         log.info("Booking transitioned to EXPIRED (PaymentTimedOut): bookingId={}", bookingId);
+    }
+
+    @Override
+    @Transactional
+    public void onInventoryReleased(UUID eventId, UUID bookingId) {
+        if (consumedEventRepository.existsById(eventId)) {
+            log.info("Skipping duplicate InventoryReleased: eventId={}, bookingId={}", eventId, bookingId);
+            return;
+        }
+
+        Booking booking = findBooking(bookingId);
+        BookingStatus from = booking.getStatus();
+
+        // A Booking already CANCELLED (pre-confirmation path) is a no-op (EVT-005).
+        if (from == BookingStatus.CANCELLED) {
+            log.info("InventoryReleased on already-CANCELLED booking, no-op: bookingId={}", bookingId);
+            consumedEventRepository.save(new ConsumedEvent(eventId, "InventoryReleased"));
+            return;
+        }
+
+        StateTransitionGuard.assertAllowed(from, BookingStatus.CANCELLED);
+
+        booking.setStatus(BookingStatus.CANCELLED);
+        booking.setCancelledAt(Instant.now());
+        booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.CANCELLED));
+        consumedEventRepository.save(new ConsumedEvent(eventId, "InventoryReleased"));
+
+        log.info("Booking transitioned to CANCELLED (InventoryReleased): bookingId={}", bookingId);
     }
 
     // -------------------------------------------------------------------------

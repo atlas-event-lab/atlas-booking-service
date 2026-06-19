@@ -12,4 +12,6 @@ import java.util.UUID;
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     Optional<Booking> findByIdempotencyKey(String idempotencyKey);
+
+    Optional<Booking> findByCancellationIdempotencyKey(String cancellationIdempotencyKey);
 }
