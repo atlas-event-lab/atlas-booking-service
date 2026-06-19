@@ -51,6 +51,10 @@ clients:
   search:
     base-url: ${SEARCH_SERVICE_URL:http://localhost:8081}
 
+atlas:
+  outbox:
+    poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:2000}
+
 management:
   endpoints:
     web:

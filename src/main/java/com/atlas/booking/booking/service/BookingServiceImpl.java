@@ -23,16 +23,13 @@ import com.atlas.booking.booking.exception.IdempotencyConflictException;
 import com.atlas.booking.booking.exception.PricingMismatchException;
 import com.atlas.booking.booking.exception.TripNotFoundException;
 import com.atlas.booking.booking.mapper.BookingMapper;
-import com.atlas.booking.booking.messaging.BookingCreatedApplicationEvent;
-import com.atlas.booking.booking.messaging.BookingLifecycleApplicationEvent;
+import com.atlas.booking.booking.messaging.OutboxEventWriter;
 import com.atlas.booking.booking.repository.BookingRepository;
 import com.atlas.booking.booking.repository.ConsumedEventRepository;
-import com.atlas.booking.shared.messaging.EventTopics;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -66,7 +63,7 @@ public class BookingServiceImpl implements BookingService {
     private final ConsumedEventRepository consumedEventRepository;
     private final SearchClient searchClient;
     private final ObjectMapper objectMapper;
-    private final ApplicationEventPublisher eventPublisher;
+    private final OutboxEventWriter outboxEventWriter;
     private final BookingMapper bookingMapper;
 
     // -------------------------------------------------------------------------
@@ -142,10 +139,13 @@ public class BookingServiceImpl implements BookingService {
 
         Booking saved = bookingRepository.save(booking);
 
-        BookingCreatedPayload kafkaPayload = buildCreatedPayload(saved);
-        eventPublisher.publishEvent(
-                new BookingCreatedApplicationEvent(this, saved.getBookingId(),
-                        saved.getCorrelationId(), saved.getSagaId(), kafkaPayload));
+        // Write BookingCreated to the outbox in this same transaction (EVT-009).
+        outboxEventWriter.write(
+            saved.getBookingId(),
+            "BookingCreated",
+            saved.getCorrelationId(),
+            saved.getSagaId().toString(),
+            buildCreatedPayload(saved));
 
         log.info("Booking created: bookingId={}, userId={}, tripId={}, sagaId={}, correlationId={}",
                 bookingId, userId, request.tripId(), sagaId, correlationId);
@@ -199,7 +199,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.FAILED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.FAILED));
         consumedEventRepository.save(new ConsumedEvent(eventId, "InventoryRejected"));
-        eventPublisher.publishEvent(buildLifecycleEvent(booking, "BookingFailed", EventTopics.BOOKING_FAILED));
+        publishLifecycle(booking, "BookingFailed");
 
         log.info("Booking transitioned to FAILED (InventoryRejected): bookingId={}", bookingId);
     }
@@ -221,7 +221,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setConfirmedAt(Instant.now());
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.CONFIRMED));
         consumedEventRepository.save(new ConsumedEvent(eventId, "PaymentSucceeded"));
-        eventPublisher.publishEvent(buildLifecycleEvent(booking, "BookingConfirmed", EventTopics.BOOKING_CONFIRMED));
+        publishLifecycle(booking, "BookingConfirmed");
 
         log.info("Booking transitioned to CONFIRMED: bookingId={}, paymentId={}", bookingId, paymentId);
     }
@@ -241,7 +241,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.FAILED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.FAILED));
         consumedEventRepository.save(new ConsumedEvent(eventId, "PaymentFailed"));
-        eventPublisher.publishEvent(buildLifecycleEvent(booking, "BookingFailed", EventTopics.BOOKING_FAILED));
+        publishLifecycle(booking, "BookingFailed");
 
         log.info("Booking transitioned to FAILED (PaymentFailed): bookingId={}", bookingId);
     }
@@ -261,7 +261,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.EXPIRED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.EXPIRED));
         consumedEventRepository.save(new ConsumedEvent(eventId, "PaymentTimedOut"));
-        eventPublisher.publishEvent(buildLifecycleEvent(booking, "BookingExpired", EventTopics.BOOKING_EXPIRED));
+        publishLifecycle(booking, "BookingExpired");
 
         log.info("Booking transitioned to EXPIRED (PaymentTimedOut): bookingId={}", bookingId);
     }
@@ -333,18 +333,15 @@ public class BookingServiceImpl implements BookingService {
                 new MoneyEvent(booking.getTotal().getAmount(), booking.getTotal().getCurrency()));
     }
 
-    private BookingLifecycleApplicationEvent buildLifecycleEvent(Booking booking,
-                                                                  String eventType,
-                                                                  String topic) {
+    /** Writes a Booking lifecycle event (Confirmed/Failed/Expired) to the outbox (EVT-009). */
+    private void publishLifecycle(Booking booking, String eventType) {
         var payload = new BookingLifecyclePayload(
                 booking.getBookingId(),
                 booking.getUserId(),
                 booking.getStatus().name());
-        return new BookingLifecycleApplicationEvent(
-                this, eventType, topic,
-                booking.getBookingId(),
-                booking.getCorrelationId(),
-                booking.getSagaId().toString(),
+        outboxEventWriter.write(
+                booking.getBookingId(), eventType,
+                booking.getCorrelationId(), booking.getSagaId().toString(),
                 payload);
     }
 

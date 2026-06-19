@@ -26,7 +26,7 @@ import java.util.UUID;
 public class ConsumedEvent {
 
     @Id
-    @Column(name = "event_id", nullable = false, updatable = false)
+    @Column(name = "id", nullable = false, updatable = false)
     private UUID eventId;
 
     @Column(name = "event_type", nullable = false, length = 100)

@@ -8,8 +8,7 @@ import com.atlas.booking.booking.exception.IdempotencyConflictException;
 import com.atlas.booking.booking.exception.PricingMismatchException;
 import com.atlas.booking.booking.exception.TripNotFoundException;
 import com.atlas.booking.booking.mapper.BookingMapper;
-import com.atlas.booking.booking.messaging.BookingCreatedApplicationEvent;
-import com.atlas.booking.booking.messaging.BookingLifecycleApplicationEvent;
+import com.atlas.booking.booking.messaging.OutboxEventWriter;
 import com.atlas.booking.booking.repository.BookingRepository;
 import com.atlas.booking.booking.repository.ConsumedEventRepository;
 import com.atlas.booking.booking.support.BookingTestData;
@@ -22,7 +21,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -32,6 +30,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,7 +42,7 @@ class BookingServiceImplTest {
     @Mock ConsumedEventRepository   consumedEventRepository;
     @Mock SearchClient              searchClient;
     @Mock ObjectMapper              objectMapper;
-    @Mock ApplicationEventPublisher eventPublisher;
+    @Mock OutboxEventWriter         outboxEventWriter;
     @Mock BookingMapper             bookingMapper;
 
     @InjectMocks
@@ -82,7 +81,7 @@ class BookingServiceImplTest {
         assertThat(result.booking()).isEqualTo(BookingTestData.aBookingResponse());
 
         verify(bookingRepository).save(any(Booking.class));
-        verify(eventPublisher).publishEvent(any(BookingCreatedApplicationEvent.class));
+        verify(outboxEventWriter).write(any(), eq("BookingCreated"), any(), any(), any());
     }
 
     @Test
@@ -109,7 +108,7 @@ class BookingServiceImplTest {
         assertThat(result.isReplay()).isTrue();
         assertThat(result.booking()).isEqualTo(BookingTestData.aBookingResponse());
         verify(bookingRepository, never()).save(any());
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -198,7 +197,7 @@ class BookingServiceImplTest {
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.INVENTORY_RESERVED);
         verify(consumedEventRepository).save(any());
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -209,6 +208,7 @@ class BookingServiceImplTest {
 
         verify(bookingRepository, never()).findById(any());
         verify(consumedEventRepository, never()).save(any());
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
     }
 
     // ── Saga: onInventoryRejected ────────────────────────────────────────────
@@ -223,7 +223,7 @@ class BookingServiceImplTest {
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.FAILED);
         verify(consumedEventRepository).save(any());
-        verify(eventPublisher).publishEvent(any(BookingLifecycleApplicationEvent.class));
+        verify(outboxEventWriter).write(any(), eq("BookingFailed"), any(), any(), any());
     }
 
     @Test
@@ -233,7 +233,7 @@ class BookingServiceImplTest {
         bookingService.onInventoryRejected(BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID);
 
         verify(bookingRepository, never()).findById(any());
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
     }
 
     // ── Saga: onPaymentSucceeded ─────────────────────────────────────────────
@@ -251,7 +251,7 @@ class BookingServiceImplTest {
         assertThat(booking.getPaymentId()).isEqualTo(BookingTestData.PAYMENT_ID);
         assertThat(booking.getConfirmedAt()).isNotNull();
         verify(consumedEventRepository).save(any());
-        verify(eventPublisher).publishEvent(any(BookingLifecycleApplicationEvent.class));
+        verify(outboxEventWriter).write(any(), eq("BookingConfirmed"), any(), any(), any());
     }
 
     @Test
@@ -262,7 +262,7 @@ class BookingServiceImplTest {
                 BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID, BookingTestData.PAYMENT_ID);
 
         verify(bookingRepository, never()).findById(any());
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
     }
 
     // ── Saga: onPaymentFailed ────────────────────────────────────────────────
@@ -276,7 +276,7 @@ class BookingServiceImplTest {
         bookingService.onPaymentFailed(BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID);
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.FAILED);
-        verify(eventPublisher).publishEvent(any(BookingLifecycleApplicationEvent.class));
+        verify(outboxEventWriter).write(any(), eq("BookingFailed"), any(), any(), any());
     }
 
     // ── Saga: onPaymentTimedOut ──────────────────────────────────────────────
@@ -290,7 +290,7 @@ class BookingServiceImplTest {
         bookingService.onPaymentTimedOut(BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID);
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.EXPIRED);
-        verify(eventPublisher).publishEvent(any(BookingLifecycleApplicationEvent.class));
+        verify(outboxEventWriter).write(any(), eq("BookingExpired"), any(), any(), any());
     }
 
     // ── Helper ───────────────────────────────────────────────────────────────

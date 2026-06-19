@@ -29,7 +29,7 @@ import java.util.UUID;
 public class Traveler {
 
     @Id
-    @Column(name = "traveler_id", nullable = false, updatable = false)
+    @Column(name = "id", nullable = false, updatable = false)
     @EqualsAndHashCode.Include
     @ToString.Include
     private UUID travelerId;

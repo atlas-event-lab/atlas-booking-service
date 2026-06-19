@@ -12,10 +12,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -36,8 +36,8 @@ class BookingControllerTest {
 
     @Autowired MockMvc     mvc;
     @Autowired ObjectMapper objectMapper;
-    @MockBean  BookingService bookingService;
-    @MockBean  JwtDecoder     jwtDecoder;
+    @MockitoBean BookingService bookingService;
+    @MockitoBean  JwtDecoder     jwtDecoder;
 
     private static final String BASE_URL = "/api/v1/bookings";
 

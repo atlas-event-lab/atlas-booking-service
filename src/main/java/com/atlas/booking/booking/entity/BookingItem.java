@@ -31,7 +31,7 @@ import java.util.UUID;
 public class BookingItem {
 
     @Id
-    @Column(name = "booking_item_id", nullable = false, updatable = false)
+    @Column(name = "id", nullable = false, updatable = false)
     @EqualsAndHashCode.Include
     @ToString.Include
     private UUID bookingItemId;
