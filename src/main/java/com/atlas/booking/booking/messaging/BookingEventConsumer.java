@@ -88,7 +88,7 @@ public class BookingEventConsumer {
         UUID eventId   = extractEventId(envelope);
         Map<String, Object> payload = extractPayload(envelope);
         UUID bookingId = extractBookingId(payload);
-        UUID paymentId = extractBookingId(payload);
+        UUID paymentId = extractPaymentId(payload);
 
         log.debug("Received PaymentSucceeded: eventId={}, bookingId={}, paymentId={}",
                 eventId, bookingId, paymentId);
@@ -149,9 +149,17 @@ public class BookingEventConsumer {
     }
 
     private UUID extractBookingId(Map<String, Object> payload) {
-        Object raw = payload.get("bookingId");
+        return extractUuidField(payload, "bookingId");
+    }
+
+    private UUID extractPaymentId(Map<String, Object> payload) {
+        return extractUuidField(payload, "paymentId");
+    }
+
+    private UUID extractUuidField(Map<String, Object> payload, String field) {
+        Object raw = payload.get(field);
         if (raw == null) {
-            throw new IllegalArgumentException("Missing field 'bookingId' in payload");
+            throw new IllegalArgumentException("Missing field '" + field + "' in payload");
         }
         return UUID.fromString(raw.toString());
     }
