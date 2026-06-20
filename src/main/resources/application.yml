@@ -54,6 +54,14 @@ clients:
 atlas:
   outbox:
     poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:2000}
+  booking:
+    expiration:
+      # Safety-net deadline for stale PENDING Bookings only (feature.md addendum — Timeout
+      # Ownership). Outermost deadline in the cascade: SHALL be >= inventory reservation TTL +
+      # margin, so owner timeouts (payment, then inventory TTL) fire first. INVENTORY_RESERVED is
+      # settled by Payment's PaymentTimedOut, not by this job.
+      pending-timeout: ${BOOKING_EXPIRATION_PENDING_TIMEOUT:30m}
+      scan-interval-ms: ${BOOKING_EXPIRATION_SCAN_INTERVAL_MS:60000}
 
 management:
   endpoints:

@@ -17,11 +17,10 @@ class StateTransitionGuardTest {
     @CsvSource({
             "PENDING,           INVENTORY_RESERVED",
             "PENDING,           FAILED",
-            "PENDING,           CANCELLED",
+            "PENDING,           EXPIRED",
             "INVENTORY_RESERVED, CONFIRMED",
             "INVENTORY_RESERVED, FAILED",
             "INVENTORY_RESERVED, EXPIRED",
-            "INVENTORY_RESERVED, CANCELLED",
             "CONFIRMED,         CANCELLING",
             "CANCELLING,        CANCELLED"
     })
@@ -38,10 +37,11 @@ class StateTransitionGuardTest {
     @ParameterizedTest(name = "{0} → {1} is forbidden")
     @CsvSource({
             "PENDING,            CONFIRMED",
-            "PENDING,            EXPIRED",
             "PENDING,            CANCELLING",
+            "PENDING,            CANCELLED",
             "INVENTORY_RESERVED, PENDING",
             "INVENTORY_RESERVED, CANCELLING",
+            "INVENTORY_RESERVED, CANCELLED",
             "CONFIRMED,          FAILED",
             "CONFIRMED,          EXPIRED",
             "CONFIRMED,          CANCELLED",

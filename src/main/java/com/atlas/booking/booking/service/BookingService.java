@@ -79,4 +79,17 @@ public interface BookingService {
      * Idempotent: re-delivered events with the same {@code eventId} cause no second transition.
      */
     void onInventoryReleased(UUID eventId, UUID bookingId);
+
+    // ── Expiration (safety-net scheduler) ─────────────────────────────────────
+
+    /**
+     * Expires a single stale {@code PENDING} Booking ({@code PENDING → EXPIRED}) and publishes
+     * {@code BookingExpired} to the outbox (EVT-009). Runs in its own transaction (ARCH-007).
+     * <p>
+     * Scope is {@code PENDING} only (feature.md addendum — "Timeout Ownership"):
+     * {@code INVENTORY_RESERVED → EXPIRED} is owned by Payment's {@code PaymentTimedOut}, never by
+     * the scheduler. A Booking that is not {@code PENDING} (a concurrent Saga event already won) is
+     * a no-op.
+     */
+    void expireBooking(UUID bookingId);
 }

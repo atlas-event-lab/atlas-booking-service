@@ -509,6 +509,62 @@ class BookingServiceImplTest {
         verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
     }
 
+    // ── expireBooking ────────────────────────────────────────────────────────
+
+    @Test
+    void expireBooking_PENDING_transitions_to_EXPIRED_and_publishes_BookingExpired() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.PENDING);
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        bookingService.expireBooking(BookingTestData.BOOKING_ID);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.EXPIRED);
+        verify(outboxEventWriter).write(any(), eq("BookingExpired"), any(), any(), any());
+    }
+
+    @Test
+    void expireBooking_INVENTORY_RESERVED_is_noop() {
+        // Addendum: INVENTORY_RESERVED → EXPIRED is owned by Payment's PaymentTimedOut,
+        // never by the scheduler. The job must not transition it (no orphan-charge race).
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.INVENTORY_RESERVED);
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        bookingService.expireBooking(BookingTestData.BOOKING_ID);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.INVENTORY_RESERVED);
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void expireBooking_terminal_state_is_noop() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.CONFIRMED);
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        bookingService.expireBooking(BookingTestData.BOOKING_ID);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void expireBooking_already_EXPIRED_is_noop() {
+        Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.EXPIRED);
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+        bookingService.expireBooking(BookingTestData.BOOKING_ID);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.EXPIRED);
+        verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void expireBooking_notFound_throws() {
+        when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> bookingService.expireBooking(BookingTestData.BOOKING_ID))
+                .isInstanceOf(BookingNotFoundException.class);
+    }
+
     // ── Helper ───────────────────────────────────────────────────────────────
 
     private static String computeSha256Hex(byte[] bytes) {

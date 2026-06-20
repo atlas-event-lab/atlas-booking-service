@@ -16,12 +16,11 @@ public final class StateTransitionGuard {
             BookingStatus.PENDING, Set.of(
                     BookingStatus.INVENTORY_RESERVED,
                     BookingStatus.FAILED,
-                    BookingStatus.CANCELLED),
+                    BookingStatus.EXPIRED),
             BookingStatus.INVENTORY_RESERVED, Set.of(
                     BookingStatus.CONFIRMED,
                     BookingStatus.FAILED,
-                    BookingStatus.EXPIRED,
-                    BookingStatus.CANCELLED),
+                    BookingStatus.EXPIRED),
             BookingStatus.CONFIRMED, Set.of(
                     BookingStatus.CANCELLING),
             BookingStatus.CANCELLING, Set.of(

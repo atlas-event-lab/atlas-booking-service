@@ -347,6 +347,31 @@ public class BookingServiceImpl implements BookingService {
     }
 
     // -------------------------------------------------------------------------
+    // Expiration (safety-net scheduler)
+    // -------------------------------------------------------------------------
+
+    @Override
+    @Transactional
+    public void expireBooking(UUID bookingId) {
+        Booking booking = findBooking(bookingId);
+        BookingStatus from = booking.getStatus();
+
+        if (from != BookingStatus.PENDING) {
+            log.info("Skipping expiration, booking not PENDING: bookingId={}, status={}",
+                    bookingId, from);
+            return;
+        }
+
+        StateTransitionGuard.assertAllowed(from, BookingStatus.EXPIRED);
+
+        booking.setStatus(BookingStatus.EXPIRED);
+        booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.EXPIRED));
+        publishLifecycle(booking, "BookingExpired");
+
+        log.info("Booking expired by scheduler: bookingId={}, from={}", bookingId, from);
+    }
+
+    // -------------------------------------------------------------------------
     // Pricing (SPEC-DOMAIN-PRICING)
     // -------------------------------------------------------------------------
 
