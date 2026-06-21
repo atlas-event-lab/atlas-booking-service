@@ -83,6 +83,7 @@ public class OutboxRelay {
         return switch (eventType) {
             case "BookingCreated"   -> EventTopics.BOOKING_CREATED;
             case "BookingConfirmed" -> EventTopics.BOOKING_CONFIRMED;
+            case "BookingCancelled" -> EventTopics.BOOKING_CANCELLED;
             case "BookingFailed"    -> EventTopics.BOOKING_FAILED;
             case "BookingExpired"   -> EventTopics.BOOKING_EXPIRED;
             default -> throw new IllegalStateException("No topic mapping for event type: " + eventType);
