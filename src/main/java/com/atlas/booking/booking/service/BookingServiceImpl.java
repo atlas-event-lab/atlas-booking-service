@@ -425,7 +425,8 @@ public class BookingServiceImpl implements BookingService {
                     new BookingItemEvent(
                         item.getType().name(),
                         item.getResourceId(),
-                        item.getQuantity()
+                        item.getQuantity(),
+                        item.getSubtotal()
                     )
                 )
                 .toList();

@@ -7,8 +7,8 @@ spring:
 
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/booking_db}
-    username: ${DB_USERNAME:booking_user}
-    password: ${DB_PASSWORD:booking_pass}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
     hikari:
       connection-timeout: 20000
       maximum-pool-size: 10
@@ -72,7 +72,14 @@ management:
     health:
       show-details: when-authorized
 
+#logging:
+#  level:
+#    com.atlas: INFO
+#    org.springframework.security: WARN
+
 logging:
   level:
-    com.atlas: INFO
-    org.springframework.security: WARN
+    com.atlas: DEBUG
+    org.springframework.security: TRACE
+    org.springframework.security.web.FilterChainProxy: TRACE
+    org.springframework.security.oauth2.server.resource: TRACE

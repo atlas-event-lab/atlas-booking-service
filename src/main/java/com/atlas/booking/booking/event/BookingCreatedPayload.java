@@ -14,6 +14,6 @@ public record BookingCreatedPayload(
         UUID userId,
         UUID tripId,
         List<BookingItemEvent> items,
-        int travelers,
+        Integer travelers,
         MoneyEvent total
 ) {}
