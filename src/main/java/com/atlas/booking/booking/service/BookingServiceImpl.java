@@ -29,6 +29,8 @@ import com.atlas.booking.booking.mapper.BookingMapper;
 import com.atlas.booking.booking.messaging.OutboxEventWriter;
 import com.atlas.booking.booking.repository.BookingRepository;
 import com.atlas.booking.booking.repository.ConsumedEventRepository;
+import com.atlas.booking.shared.messaging.EventType;
+import com.atlas.booking.shared.messaging.ConsumerEventType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -145,7 +147,7 @@ public class BookingServiceImpl implements BookingService {
         // Write BookingCreated to the outbox in this same transaction (EVT-009).
         outboxEventWriter.write(
             saved.getBookingId(),
-            "BookingCreated",
+            EventType.BOOKING_CREATED,
             saved.getCorrelationId(),
             saved.getSagaId().toString(),
             buildCreatedPayload(saved));
@@ -205,7 +207,7 @@ public class BookingServiceImpl implements BookingService {
 
         // Write BookingCancelled to the outbox in this same transaction (EVT-009).
         // The terminal CANCELLED transition (and cancelledAt) is applied later on InventoryReleased.
-        publishLifecycle(booking, "BookingCancelled");
+        publishLifecycle(booking, EventType.BOOKING_CANCELLED);
 
         log.info("Booking cancellation initiated: bookingId={}, userId={}, from={}, to=CANCELLING",
                 bookingId, userId, from);
@@ -231,7 +233,7 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.INVENTORY_RESERVED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.INVENTORY_RESERVED));
-        consumedEventRepository.save(new ConsumedEvent(eventId, "InventoryReserved"));
+        consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.INVENTORY_RESERVED));
 
         log.info("Booking transitioned to INVENTORY_RESERVED: bookingId={}", bookingId);
     }
@@ -250,8 +252,8 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.FAILED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.FAILED));
-        consumedEventRepository.save(new ConsumedEvent(eventId, "InventoryRejected"));
-        publishLifecycle(booking, "BookingFailed");
+        consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.INVENTORY_REJECTED));
+        publishLifecycle(booking, EventType.BOOKING_FAILED);
 
         log.info("Booking transitioned to FAILED (InventoryRejected): bookingId={}", bookingId);
     }
@@ -272,8 +274,8 @@ public class BookingServiceImpl implements BookingService {
         booking.setPaymentId(paymentId);
         booking.setConfirmedAt(Instant.now());
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.CONFIRMED));
-        consumedEventRepository.save(new ConsumedEvent(eventId, "PaymentSucceeded"));
-        publishLifecycle(booking, "BookingConfirmed");
+        consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.PAYMENT_SUCCEEDED));
+        publishLifecycle(booking, EventType.BOOKING_CONFIRMED);
 
         log.info("Booking transitioned to CONFIRMED: bookingId={}, paymentId={}", bookingId, paymentId);
     }
@@ -292,8 +294,8 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.FAILED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.FAILED));
-        consumedEventRepository.save(new ConsumedEvent(eventId, "PaymentFailed"));
-        publishLifecycle(booking, "BookingFailed");
+        consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.PAYMENT_FAILED));
+        publishLifecycle(booking, EventType.BOOKING_FAILED);
 
         log.info("Booking transitioned to FAILED (PaymentFailed): bookingId={}", bookingId);
     }
@@ -312,8 +314,8 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.EXPIRED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.EXPIRED));
-        consumedEventRepository.save(new ConsumedEvent(eventId, "PaymentTimedOut"));
-        publishLifecycle(booking, "BookingExpired");
+        consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.PAYMENT_TIMEOUT));
+        publishLifecycle(booking, EventType.BOOKING_EXPIRED);
 
         log.info("Booking transitioned to EXPIRED (PaymentTimedOut): bookingId={}", bookingId);
     }
@@ -332,7 +334,7 @@ public class BookingServiceImpl implements BookingService {
         // A Booking already CANCELLED (pre-confirmation path) is a no-op (EVT-005).
         if (from == BookingStatus.CANCELLED) {
             log.info("InventoryReleased on already-CANCELLED booking, no-op: bookingId={}", bookingId);
-            consumedEventRepository.save(new ConsumedEvent(eventId, "InventoryReleased"));
+            consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.INVENTORY_RELEASED));
             return;
         }
 
@@ -341,7 +343,7 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.CANCELLED);
         booking.setCancelledAt(Instant.now());
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.CANCELLED));
-        consumedEventRepository.save(new ConsumedEvent(eventId, "InventoryReleased"));
+        consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.INVENTORY_RELEASED));
 
         log.info("Booking transitioned to CANCELLED (InventoryReleased): bookingId={}", bookingId);
     }
@@ -366,7 +368,7 @@ public class BookingServiceImpl implements BookingService {
 
         booking.setStatus(BookingStatus.EXPIRED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.EXPIRED));
-        publishLifecycle(booking, "BookingExpired");
+        publishLifecycle(booking, EventType.BOOKING_EXPIRED);
 
         log.info("Booking expired by scheduler: bookingId={}, from={}", bookingId, from);
     }
@@ -440,15 +442,17 @@ public class BookingServiceImpl implements BookingService {
     }
 
     /** Writes a Booking lifecycle event (Confirmed/Failed/Expired) to the outbox (EVT-009). */
-    private void publishLifecycle(Booking booking, String eventType) {
+    private void publishLifecycle(Booking booking, EventType eventType) {
         var payload = new BookingLifecyclePayload(
-                booking.getBookingId(),
-                booking.getUserId(),
-                booking.getStatus().name());
+            booking.getBookingId(),
+            booking.getUserId(),
+            booking.getStatus().name());
         outboxEventWriter.write(
-                booking.getBookingId(), eventType,
-                booking.getCorrelationId(), booking.getSagaId().toString(),
-                payload);
+            booking.getBookingId(),
+            eventType,
+            booking.getCorrelationId(),
+            booking.getSagaId().toString(),
+            payload);
     }
 
     // -------------------------------------------------------------------------

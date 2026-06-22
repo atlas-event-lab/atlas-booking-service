@@ -4,7 +4,7 @@ import com.atlas.booking.booking.entity.OutboxEvent;
 import com.atlas.booking.booking.entity.OutboxStatus;
 import com.atlas.booking.booking.repository.OutboxRepository;
 import com.atlas.booking.shared.messaging.EventTopics;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.atlas.booking.shared.messaging.EventType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -25,15 +25,13 @@ import static org.mockito.Mockito.when;
 class OutboxRelayTest {
 
     @Mock OutboxRepository outboxRepository;
-    @Mock KafkaTemplate<String, Object> kafkaTemplate;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Mock KafkaTemplate<String, String> kafkaTemplate;
 
     @Test
     void publishesBookingCancelled_toCancelledTopic() {
         UUID bookingId = UUID.randomUUID();
         OutboxEvent event = new OutboxEvent(
-                UUID.randomUUID(), "Booking", bookingId, "BookingCancelled", 1,
+                UUID.randomUUID(), "Booking", bookingId, EventType.BOOKING_CANCELLED, 1,
                 "{\"eventType\":\"BookingCancelled\",\"payload\":{\"bookingId\":\"" + bookingId + "\"}}");
 
         when(outboxRepository.findTop100ByStatusInOrderByCreatedAtAsc(
@@ -42,7 +40,7 @@ class OutboxRelayTest {
         when(kafkaTemplate.send(anyString(), anyString(), any()))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
-        new OutboxRelay(outboxRepository, kafkaTemplate, objectMapper).publishPending();
+        new OutboxRelay(outboxRepository, kafkaTemplate).publishPending();
 
         verify(kafkaTemplate).send(eq(EventTopics.BOOKING_CANCELLED), eq(bookingId.toString()), any());
     }

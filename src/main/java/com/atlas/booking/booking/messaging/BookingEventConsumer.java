@@ -1,9 +1,18 @@
 package com.atlas.booking.booking.messaging;
 
+import com.atlas.booking.booking.event.EventValidator;
+import com.atlas.booking.booking.event.InventoryRejectedPayload;
+import com.atlas.booking.booking.event.InventoryReleasedPayload;
+import com.atlas.booking.booking.event.InventoryReservedPayload;
+import com.atlas.booking.booking.event.PaymentFailedPayload;
+import com.atlas.booking.booking.event.PaymentSucceededPayload;
+import com.atlas.booking.booking.event.PaymentTimedOutPayload;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
 import com.atlas.booking.booking.exception.InvalidStateTransitionException;
 import com.atlas.booking.booking.service.BookingService;
+import com.atlas.booking.shared.messaging.EventEnvelope;
 import com.atlas.booking.shared.messaging.EventTopics;
+import jakarta.validation.ConstraintViolationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -36,6 +45,7 @@ import java.util.UUID;
 public class BookingEventConsumer {
 
     private final BookingService bookingService;
+    private final EventValidator eventValidator;
 
     // ── Inventory events ──────────────────────────────────────────────────────
 
@@ -44,13 +54,14 @@ public class BookingEventConsumer {
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
-                       IllegalArgumentException.class}
+                       IllegalArgumentException.class, ConstraintViolationException.class}
     )
     @KafkaListener(topics = EventTopics.INVENTORY_BOOKING_RESERVED,
                    groupId = "${spring.kafka.consumer.group-id}")
-    public void onInventoryReserved(Map<String, Object> envelope) {
-        UUID eventId   = extractEventId(envelope);
-        UUID bookingId = extractBookingId(extractPayload(envelope));
+    public void onInventoryReserved(EventEnvelope<InventoryReservedPayload> envelope) {
+        eventValidator.validate(envelope);
+        UUID eventId   = envelope.eventId();
+        UUID bookingId = envelope.payload().bookingId();
 
         log.debug("Received InventoryReserved: eventId={}, bookingId={}", eventId, bookingId);
         bookingService.onInventoryReserved(eventId, bookingId);
@@ -61,13 +72,14 @@ public class BookingEventConsumer {
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
-                       IllegalArgumentException.class}
+                       IllegalArgumentException.class, ConstraintViolationException.class}
     )
     @KafkaListener(topics = EventTopics.INVENTORY_BOOKING_REJECTED,
                    groupId = "${spring.kafka.consumer.group-id}")
-    public void onInventoryRejected(Map<String, Object> envelope) {
-        UUID eventId   = extractEventId(envelope);
-        UUID bookingId = extractBookingId(extractPayload(envelope));
+    public void onInventoryRejected(EventEnvelope<InventoryRejectedPayload> envelope) {
+        eventValidator.validate(envelope);
+        UUID eventId   = envelope.eventId();
+        UUID bookingId = envelope.payload().bookingId();
 
         log.debug("Received InventoryRejected: eventId={}, bookingId={}", eventId, bookingId);
         bookingService.onInventoryRejected(eventId, bookingId);
@@ -80,13 +92,14 @@ public class BookingEventConsumer {
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
-                       IllegalArgumentException.class}
+                       IllegalArgumentException.class, ConstraintViolationException.class}
     )
     @KafkaListener(topics = EventTopics.INVENTORY_BOOKING_RELEASED,
                    groupId = "${spring.kafka.consumer.group-id}")
-    public void onInventoryReleased(Map<String, Object> envelope) {
-        UUID eventId   = extractEventId(envelope);
-        UUID bookingId = extractBookingId(extractPayload(envelope));
+    public void onInventoryReleased(EventEnvelope<InventoryReleasedPayload> envelope) {
+        eventValidator.validate(envelope);
+        UUID eventId   = envelope.eventId();
+        UUID bookingId = envelope.payload().bookingId();
 
         log.debug("Received InventoryReleased: eventId={}, bookingId={}", eventId, bookingId);
         bookingService.onInventoryReleased(eventId, bookingId);
@@ -99,15 +112,16 @@ public class BookingEventConsumer {
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
-                       IllegalArgumentException.class}
+                       IllegalArgumentException.class, ConstraintViolationException.class}
     )
     @KafkaListener(topics = EventTopics.PAYMENT_SUCCEEDED,
                    groupId = "${spring.kafka.consumer.group-id}")
-    public void onPaymentSucceeded(Map<String, Object> envelope) {
-        UUID eventId   = extractEventId(envelope);
-        Map<String, Object> payload = extractPayload(envelope);
-        UUID bookingId = extractBookingId(payload);
-        UUID paymentId = extractPaymentId(payload);
+    public void onPaymentSucceeded(EventEnvelope<PaymentSucceededPayload> envelope) {
+        eventValidator.validate(envelope);
+        UUID eventId   = envelope.eventId();
+        PaymentSucceededPayload payload = envelope.payload();
+        UUID bookingId = payload.bookingId();
+        UUID paymentId = payload.paymentId();
 
         log.debug("Received PaymentSucceeded: eventId={}, bookingId={}, paymentId={}",
                 eventId, bookingId, paymentId);
@@ -119,13 +133,14 @@ public class BookingEventConsumer {
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
-                       IllegalArgumentException.class}
+                       IllegalArgumentException.class, ConstraintViolationException.class}
     )
     @KafkaListener(topics = EventTopics.PAYMENT_FAILED,
                    groupId = "${spring.kafka.consumer.group-id}")
-    public void onPaymentFailed(Map<String, Object> envelope) {
-        UUID eventId   = extractEventId(envelope);
-        UUID bookingId = extractBookingId(extractPayload(envelope));
+    public void onPaymentFailed(EventEnvelope<PaymentFailedPayload> envelope) {
+        eventValidator.validate(envelope);
+        UUID eventId   = envelope.eventId();
+        UUID bookingId = envelope.payload().bookingId();
 
         log.debug("Received PaymentFailed: eventId={}, bookingId={}", eventId, bookingId);
         bookingService.onPaymentFailed(eventId, bookingId);
@@ -136,50 +151,16 @@ public class BookingEventConsumer {
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
-                       IllegalArgumentException.class}
+                       IllegalArgumentException.class, ConstraintViolationException.class}
     )
     @KafkaListener(topics = EventTopics.PAYMENT_TIMED_OUT,
                    groupId = "${spring.kafka.consumer.group-id}")
-    public void onPaymentTimedOut(Map<String, Object> envelope) {
-        UUID eventId   = extractEventId(envelope);
-        UUID bookingId = extractBookingId(extractPayload(envelope));
+    public void onPaymentTimedOut(EventEnvelope<PaymentTimedOutPayload> envelope) {
+        eventValidator.validate(envelope);
+        UUID eventId   = envelope.eventId();
+        UUID bookingId = envelope.payload().bookingId();
 
         log.debug("Received PaymentTimedOut: eventId={}, bookingId={}", eventId, bookingId);
         bookingService.onPaymentTimedOut(eventId, bookingId);
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private UUID extractEventId(Map<String, Object> envelope) {
-        Object raw = envelope.get("eventId");
-        if (raw == null) {
-            throw new IllegalArgumentException("Missing eventId in envelope");
-        }
-        return UUID.fromString(raw.toString());
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> extractPayload(Map<String, Object> envelope) {
-        Object raw = envelope.get("payload");
-        if (raw == null) {
-            throw new IllegalArgumentException("Missing payload in envelope");
-        }
-        return (Map<String, Object>) raw;
-    }
-
-    private UUID extractBookingId(Map<String, Object> payload) {
-        return extractUuidField(payload, "bookingId");
-    }
-
-    private UUID extractPaymentId(Map<String, Object> payload) {
-        return extractUuidField(payload, "paymentId");
-    }
-
-    private UUID extractUuidField(Map<String, Object> payload, String field) {
-        Object raw = payload.get(field);
-        if (raw == null) {
-            throw new IllegalArgumentException("Missing field '" + field + "' in payload");
-        }
-        return UUID.fromString(raw.toString());
     }
 }

@@ -4,8 +4,7 @@ import com.atlas.booking.booking.entity.OutboxEvent;
 import com.atlas.booking.booking.entity.OutboxStatus;
 import com.atlas.booking.booking.repository.OutboxRepository;
 import com.atlas.booking.shared.messaging.EventTopics;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.atlas.booking.shared.messaging.EventType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -36,8 +35,7 @@ public class OutboxRelay {
             List.of(OutboxStatus.PENDING, OutboxStatus.FAILED);
 
     private final OutboxRepository outboxRepository;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
-    private final ObjectMapper objectMapper;
+    private final KafkaTemplate<String, String> kafkaTemplate;
 
     @Scheduled(fixedDelayString = "${atlas.outbox.poll-interval-ms:2000}")
     public void publishPending() {
@@ -53,11 +51,9 @@ public class OutboxRelay {
 
     private void publish(OutboxEvent event) {
         try {
-            JsonNode envelope = objectMapper.readTree(event.getPayload());
             String topic = resolveTopic(event.getEventType());
-
             // Block until the broker acknowledges so the row is only marked PUBLISHED on success.
-            kafkaTemplate.send(topic, event.getAggregateId().toString(), envelope).get();
+            kafkaTemplate.send(topic, event.getAggregateId().toString(), event.getPayload()).get();
 
             event.markPublished(Instant.now());
             outboxRepository.save(event);
@@ -79,14 +75,13 @@ public class OutboxRelay {
     }
 
     /** Maps an event type to its owning Booking topic (topics.md). */
-    private String resolveTopic(String eventType) {
+    private String resolveTopic(EventType eventType) {
         return switch (eventType) {
-            case "BookingCreated"   -> EventTopics.BOOKING_CREATED;
-            case "BookingConfirmed" -> EventTopics.BOOKING_CONFIRMED;
-            case "BookingCancelled" -> EventTopics.BOOKING_CANCELLED;
-            case "BookingFailed"    -> EventTopics.BOOKING_FAILED;
-            case "BookingExpired"   -> EventTopics.BOOKING_EXPIRED;
-            default -> throw new IllegalStateException("No topic mapping for event type: " + eventType);
+            case BOOKING_CREATED   -> EventTopics.BOOKING_CREATED;
+            case BOOKING_CONFIRMED -> EventTopics.BOOKING_CONFIRMED;
+            case BOOKING_CANCELLED -> EventTopics.BOOKING_CANCELLED;
+            case BOOKING_FAILED    -> EventTopics.BOOKING_FAILED;
+            case BOOKING_EXPIRED   -> EventTopics.BOOKING_EXPIRED;
         };
     }
 }

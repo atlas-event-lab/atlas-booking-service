@@ -3,6 +3,7 @@ package com.atlas.booking.booking.messaging;
 import com.atlas.booking.booking.entity.OutboxEvent;
 import com.atlas.booking.booking.repository.OutboxRepository;
 import com.atlas.booking.shared.messaging.EventEnvelope;
+import com.atlas.booking.shared.messaging.EventType;
 import com.atlas.booking.shared.web.CorrelationIdFilter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,7 +28,7 @@ public class OutboxEventWriter {
 
     private static final String PRODUCER = "booking-service";
     private static final String AGGREGATE_TYPE = "Booking";
-    private static final int EVENT_VERSION = 1;
+    private static final Integer EVENT_VERSION = 1;
 
     private final OutboxRepository outboxRepository;
     private final ObjectMapper objectMapper;
@@ -42,11 +43,11 @@ public class OutboxEventWriter {
      * @param sagaId        saga instance id (OBS-003)
      * @param payload       the business payload (never null, never carries metadata)
      */
-    public void write(UUID aggregateId, String eventType,
-                      String correlationId, String sagaId, Object payload) {
-        var envelope = new EventEnvelope<>(
+    public <T> void write(UUID aggregateId, EventType eventType,
+                      String correlationId, String sagaId, T payload) {
+        EventEnvelope<T> envelope = new EventEnvelope<>(
                 UUID.randomUUID(),
-                eventType,
+                eventType.name(),
                 EVENT_VERSION,
                 Instant.now(),
                 resolveTraceId(),

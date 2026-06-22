@@ -14,6 +14,7 @@ import com.atlas.booking.booking.messaging.OutboxEventWriter;
 import com.atlas.booking.booking.repository.BookingRepository;
 import com.atlas.booking.booking.repository.ConsumedEventRepository;
 import com.atlas.booking.booking.support.BookingTestData;
+import com.atlas.booking.shared.messaging.EventType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
@@ -84,7 +85,7 @@ class BookingServiceImplTest {
         assertThat(result.booking()).isEqualTo(BookingTestData.aBookingResponse());
 
         verify(bookingRepository).save(any(Booking.class));
-        verify(outboxEventWriter).write(any(), eq("BookingCreated"), any(), any(), any());
+        verify(outboxEventWriter).write(any(), eq(EventType.BOOKING_CREATED), any(), any(), any());
     }
 
     @Test
@@ -226,7 +227,7 @@ class BookingServiceImplTest {
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.FAILED);
         verify(consumedEventRepository).save(any());
-        verify(outboxEventWriter).write(any(), eq("BookingFailed"), any(), any(), any());
+        verify(outboxEventWriter).write(any(), eq(EventType.BOOKING_FAILED), any(), any(), any());
     }
 
     @Test
@@ -254,7 +255,7 @@ class BookingServiceImplTest {
         assertThat(booking.getPaymentId()).isEqualTo(BookingTestData.PAYMENT_ID);
         assertThat(booking.getConfirmedAt()).isNotNull();
         verify(consumedEventRepository).save(any());
-        verify(outboxEventWriter).write(any(), eq("BookingConfirmed"), any(), any(), any());
+        verify(outboxEventWriter).write(any(), eq(EventType.BOOKING_CONFIRMED), any(), any(), any());
     }
 
     @Test
@@ -279,7 +280,7 @@ class BookingServiceImplTest {
         bookingService.onPaymentFailed(BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID);
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.FAILED);
-        verify(outboxEventWriter).write(any(), eq("BookingFailed"), any(), any(), any());
+        verify(outboxEventWriter).write(any(), eq(EventType.BOOKING_FAILED), any(), any(), any());
     }
 
     // ── Saga: onPaymentTimedOut ──────────────────────────────────────────────
@@ -293,7 +294,7 @@ class BookingServiceImplTest {
         bookingService.onPaymentTimedOut(BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID);
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.EXPIRED);
-        verify(outboxEventWriter).write(any(), eq("BookingExpired"), any(), any(), any());
+        verify(outboxEventWriter).write(any(), eq(EventType.BOOKING_EXPIRED), any(), any(), any());
     }
 
     // ── cancelBooking ────────────────────────────────────────────────────────
@@ -315,7 +316,7 @@ class BookingServiceImplTest {
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLING);
         assertThat(booking.getCancelledAt()).isNull();
         assertThat(booking.getCancellationIdempotencyKey()).isEqualTo(BookingTestData.CANCELLATION_IDEMPOTENCY_KEY);
-        verify(outboxEventWriter).write(any(), eq("BookingCancelled"), any(), any(), any());
+        verify(outboxEventWriter).write(any(), eq(EventType.BOOKING_CANCELLED), any(), any(), any());
     }
 
     @Test
@@ -519,7 +520,7 @@ class BookingServiceImplTest {
         bookingService.expireBooking(BookingTestData.BOOKING_ID);
 
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.EXPIRED);
-        verify(outboxEventWriter).write(any(), eq("BookingExpired"), any(), any(), any());
+        verify(outboxEventWriter).write(any(), eq(EventType.BOOKING_EXPIRED), any(), any(), any());
     }
 
     @Test

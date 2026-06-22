@@ -1,8 +1,11 @@
 package com.atlas.booking.booking.entity;
 
+import com.atlas.booking.shared.messaging.ConsumerEventType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -29,14 +32,15 @@ public class ConsumedEvent {
     @Column(name = "id", nullable = false, updatable = false)
     private UUID eventId;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "event_type", nullable = false, length = 100)
-    private String eventType;
+    private ConsumerEventType eventType;
 
     @CreatedDate
     @Column(name = "consumed_at", nullable = false, updatable = false)
     private Instant consumedAt;
 
-    public ConsumedEvent(UUID eventId, String eventType) {
+    public ConsumedEvent(UUID eventId, ConsumerEventType eventType) {
         this.eventId = eventId;
         this.eventType = eventType;
     }

@@ -1,14 +1,14 @@
 package com.atlas.booking.booking.messaging;
 
+import com.atlas.booking.booking.event.PaymentSucceededPayload;
 import com.atlas.booking.booking.service.BookingService;
 import com.atlas.booking.booking.support.BookingTestData;
+import com.atlas.booking.shared.messaging.EventEnvelope;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
@@ -23,11 +23,10 @@ class BookingEventConsumerTest {
 
     @Test
     void onPaymentSucceeded_extracts_paymentId_from_its_own_field() {
-        Map<String, Object> envelope = Map.of(
-                "eventId", BookingTestData.EVENT_ID.toString(),
-                "payload", Map.of(
-                        "bookingId", BookingTestData.BOOKING_ID.toString(),
-                        "paymentId", BookingTestData.PAYMENT_ID.toString()));
+        EventEnvelope<PaymentSucceededPayload> envelope = new EventEnvelope<>(
+                BookingTestData.EVENT_ID,
+                null, null, null, null, null, null, null,
+                new PaymentSucceededPayload(BookingTestData.BOOKING_ID, BookingTestData.PAYMENT_ID));
 
         consumer.onPaymentSucceeded(envelope);
 
@@ -40,9 +39,10 @@ class BookingEventConsumerTest {
 
     @Test
     void onPaymentSucceeded_missing_paymentId_is_rejected() {
-        Map<String, Object> envelope = Map.of(
-                "eventId", BookingTestData.EVENT_ID.toString(),
-                "payload", Map.of("bookingId", BookingTestData.BOOKING_ID.toString()));
+        EventEnvelope<PaymentSucceededPayload> envelope = new EventEnvelope<>(
+                BookingTestData.EVENT_ID,
+                null, null, null, null, null, null, null,
+                new PaymentSucceededPayload(BookingTestData.BOOKING_ID, null));
 
         assertThatThrownBy(() -> consumer.onPaymentSucceeded(envelope))
                 .isInstanceOf(IllegalArgumentException.class)
