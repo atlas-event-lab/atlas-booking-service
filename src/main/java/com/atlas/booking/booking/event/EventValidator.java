@@ -1,6 +1,5 @@
 package com.atlas.booking.booking.event;
 
-import com.atlas.booking.shared.messaging.EventEnvelope;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Validator;

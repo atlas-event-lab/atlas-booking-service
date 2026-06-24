@@ -19,10 +19,5 @@ public record CreateBookingRequest(
         @NotNull
         @Size(min = 1)
         @Valid
-        List<TravelerRequest> travelers,
-
-        @NotNull
-        @Size(min = 1)
-        @Valid
-        List<BookingItemSelectionRequest> items
+        List<TravelerRequest> travelers
 ) {}

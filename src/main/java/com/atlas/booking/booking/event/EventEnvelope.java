@@ -1,4 +1,4 @@
-package com.atlas.booking.shared.messaging;
+package com.atlas.booking.booking.event;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;

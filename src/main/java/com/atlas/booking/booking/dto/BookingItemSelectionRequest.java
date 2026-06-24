@@ -1,5 +1,6 @@
 package com.atlas.booking.booking.dto;
 
+import com.atlas.booking.booking.client.dto.MoneyDto;
 import com.atlas.booking.booking.entity.BookingItemType;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -17,5 +18,8 @@ public record BookingItemSelectionRequest(
 
         @NotNull
         @Min(1)
-        Integer quantity
+        Integer quantity,
+
+        @NotNull
+        MoneyDto price
 ) {}

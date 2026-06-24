@@ -33,7 +33,7 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
       properties:
         spring.json.add.type.headers: 'false'
@@ -41,10 +41,11 @@ spring:
       group-id: booking-service
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
-        spring.json.trusted.packages: '*'
-        spring.json.value.default.type: java.util.LinkedHashMap
+        spring.deserializer.value.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.json.trusted.packages: 'com.atlas.booking.booking.event'
+        spring.json.value.default.type: com.atlas.booking.booking.event.EventEnvelope
         spring.json.use.type.headers: 'false'
 
 clients:

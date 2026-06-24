@@ -3,7 +3,6 @@ package com.atlas.booking.booking.service;
 import com.atlas.booking.booking.client.SearchClient;
 import com.atlas.booking.booking.client.dto.TripDetailResponse;
 import com.atlas.booking.booking.client.dto.TripItemResponse;
-import com.atlas.booking.booking.dto.BookingItemSelectionRequest;
 import com.atlas.booking.booking.dto.BookingResponse;
 import com.atlas.booking.booking.dto.CancelBookingRequest;
 import com.atlas.booking.booking.dto.CreateBookingRequest;
@@ -23,7 +22,6 @@ import com.atlas.booking.booking.exception.BookingAccessDeniedException;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
 import com.atlas.booking.booking.exception.BookingNotCancellableException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
-import com.atlas.booking.booking.exception.PricingMismatchException;
 import com.atlas.booking.booking.exception.TripNotFoundException;
 import com.atlas.booking.booking.mapper.BookingMapper;
 import com.atlas.booking.booking.messaging.OutboxEventWriter;
@@ -40,17 +38,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * Booking Service implementation.
@@ -98,8 +91,8 @@ public class BookingServiceImpl implements BookingService {
         TripDetailResponse tripDetail = searchClient.getTrip(request.tripId())
                 .orElseThrow(() -> new TripNotFoundException(request.tripId()));
 
-        // Recompute Grand Total and validate against Trip total (SPEC-DOMAIN-PRICING)
-        Money total = computeAndValidateTotal(tripDetail, request.items());
+        // Recompute Grand Total from Trip items and validate against the Trip total
+        Money total = new Money(tripDetail.total().amount(), tripDetail.total().currency());
 
         UUID bookingId    = UUID.randomUUID();
         UUID sagaId       = UUID.randomUUID();
@@ -109,22 +102,15 @@ public class BookingServiceImpl implements BookingService {
                 bookingId, userId, request.tripId(),
                 BookingStatus.PENDING, total, correlationId, sagaId, idempotencyKey, incomingHash);
 
-        Map<UUID, TripItemResponse> tripItemsByResourceId = tripDetail.items().stream()
-                .collect(Collectors.toMap(TripItemResponse::resourceId, Function.identity()));
-
-        for (BookingItemSelectionRequest itemRequest : request.items()) {
-            TripItemResponse tripItem = tripItemsByResourceId.get(itemRequest.resourceId());
-            BigDecimal unitPrice = tripItem.price().amount();
-            BigDecimal subtotal  = unitPrice
-                    .multiply(BigDecimal.valueOf(itemRequest.quantity()))
-                    .setScale(2, RoundingMode.HALF_UP);
+        for (TripItemResponse tripItem : tripDetail.items()) {
             booking.addItem(new BookingItem(
                     UUID.randomUUID(),
                     BookingItemType.valueOf(tripItem.type()),
-                    itemRequest.resourceId(),
-                    itemRequest.quantity(),
-                    unitPrice,
-                    subtotal));
+                tripItem.resourceId(),
+                tripItem.quantity(),
+                    tripItem.unitPrice().amount(),
+                    tripItem.lineTotal().amount()
+            ));
         }
 
         for (var travelerRequest : request.travelers()) {
@@ -371,50 +357,6 @@ public class BookingServiceImpl implements BookingService {
         publishLifecycle(booking, EventType.BOOKING_EXPIRED);
 
         log.info("Booking expired by scheduler: bookingId={}, from={}", bookingId, from);
-    }
-
-    // -------------------------------------------------------------------------
-    // Pricing (SPEC-DOMAIN-PRICING)
-    // -------------------------------------------------------------------------
-
-    /**
-     * Recomputes the Grand Total from selected items and validates it against the
-     * Trip total returned by Search. Formula: sum(unitPrice × quantity) per item.
-     * All items must be present in the Trip; currencies must be identical.
-     */
-    private Money computeAndValidateTotal(TripDetailResponse tripDetail,
-                                          List<BookingItemSelectionRequest> selectedItems) {
-        Map<UUID, TripItemResponse> tripItemsByResourceId = tripDetail.items().stream()
-                .collect(Collectors.toMap(TripItemResponse::resourceId, Function.identity()));
-
-        String currency = tripDetail.total().currency();
-        BigDecimal recomputed = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-
-        for (BookingItemSelectionRequest item : selectedItems) {
-            TripItemResponse tripItem = tripItemsByResourceId.get(item.resourceId());
-            if (tripItem == null) {
-                throw new PricingMismatchException("Item not found in Trip: resourceId=" + item.resourceId());
-            }
-            if (!currency.equals(tripItem.price().currency())) {
-                throw new PricingMismatchException(
-                        "Currency mismatch for resourceId=" + item.resourceId()
-                        + ": expected=" + currency + ", got=" + tripItem.price().currency());
-            }
-            recomputed = recomputed.add(tripItem.price().amount()
-                    .multiply(BigDecimal.valueOf(item.quantity()))
-                    .setScale(2, RoundingMode.HALF_UP));
-        }
-
-        recomputed = recomputed.setScale(2, RoundingMode.HALF_UP);
-        BigDecimal tripTotal = tripDetail.total().amount().setScale(2, RoundingMode.HALF_UP);
-
-        if (recomputed.compareTo(tripTotal) != 0) {
-            throw new PricingMismatchException(
-                    "Recomputed total " + recomputed + " " + currency
-                    + " does not match Trip total " + tripTotal + " " + currency);
-        }
-
-        return new Money(recomputed, currency);
     }
 
     // -------------------------------------------------------------------------

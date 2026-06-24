@@ -324,8 +324,7 @@ class BookingControllerTest {
     void createBooking_emptyTravelersList_returns_400() throws Exception {
         var request = new CreateBookingRequest(
                 BookingTestData.TRIP_ID,
-                List.of(),
-                List.of(BookingTestData.aFlightItem()));
+                List.of());
 
         mvc.perform(post(BASE_URL)
                         .with(jwt())

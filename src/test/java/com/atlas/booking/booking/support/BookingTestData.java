@@ -49,27 +49,31 @@ public final class BookingTestData {
     }
 
     public static BookingItemSelectionRequest aFlightItem() {
-        return new BookingItemSelectionRequest(BookingItemType.FLIGHT, RESOURCE_ID, 1);
+        return new BookingItemSelectionRequest(
+                BookingItemType.FLIGHT, RESOURCE_ID, 1, new MoneyDto(TOTAL_AMOUNT, CURRENCY));
     }
 
     public static CreateBookingRequest aCreateBookingRequest() {
         return new CreateBookingRequest(
                 TRIP_ID,
-                List.of(aTraveler()),
-                List.of(aFlightItem()));
+                List.of(aTraveler()));
     }
 
     public static TripDetailResponse aTripDetail() {
         return new TripDetailResponse(
                 TRIP_ID,
-                List.of(new TripItemResponse("FLIGHT", RESOURCE_ID, new MoneyDto(TOTAL_AMOUNT, CURRENCY))),
+                List.of(new TripItemResponse(
+                        "FLIGHT", RESOURCE_ID,
+                        new MoneyDto(TOTAL_AMOUNT, CURRENCY), 1, new MoneyDto(TOTAL_AMOUNT, CURRENCY))),
                 new MoneyDto(TOTAL_AMOUNT, CURRENCY));
     }
 
     public static TripDetailResponse aTripDetailWithMismatchedTotal() {
         return new TripDetailResponse(
                 TRIP_ID,
-                List.of(new TripItemResponse("FLIGHT", RESOURCE_ID, new MoneyDto(TOTAL_AMOUNT, CURRENCY))),
+                List.of(new TripItemResponse(
+                        "FLIGHT", RESOURCE_ID,
+                        new MoneyDto(TOTAL_AMOUNT, CURRENCY), 1, new MoneyDto(TOTAL_AMOUNT, CURRENCY))),
                 new MoneyDto(new BigDecimal("999.00"), CURRENCY));
     }
 

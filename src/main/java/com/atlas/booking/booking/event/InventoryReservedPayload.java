@@ -1,6 +1,8 @@
 package com.atlas.booking.booking.event;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -11,6 +13,7 @@ public record InventoryReservedPayload(
     @NotNull
     UUID bookingId,
 
+    @Valid
     @NotNull
-    UUID reservationId
+    List<ReservedItem> items
 ) {}

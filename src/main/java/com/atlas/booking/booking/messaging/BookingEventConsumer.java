@@ -10,17 +10,17 @@ import com.atlas.booking.booking.event.PaymentTimedOutPayload;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
 import com.atlas.booking.booking.exception.InvalidStateTransitionException;
 import com.atlas.booking.booking.service.BookingService;
-import com.atlas.booking.shared.messaging.EventEnvelope;
+import com.atlas.booking.booking.event.EventEnvelope;
 import com.atlas.booking.shared.messaging.EventTopics;
 import jakarta.validation.ConstraintViolationException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.annotation.RetryableTopic;
+import org.springframework.kafka.retrytopic.DltStrategy;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -53,6 +53,8 @@ public class BookingEventConsumer {
             attempts = "4",
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
+            dltStrategy = DltStrategy.FAIL_ON_ERROR,
+            autoStartDltHandler = "false",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
                        IllegalArgumentException.class, ConstraintViolationException.class}
     )
@@ -71,6 +73,8 @@ public class BookingEventConsumer {
             attempts = "4",
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
+            dltStrategy = DltStrategy.FAIL_ON_ERROR,
+            autoStartDltHandler = "false",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
                        IllegalArgumentException.class, ConstraintViolationException.class}
     )
@@ -91,6 +95,8 @@ public class BookingEventConsumer {
             attempts = "4",
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
+            dltStrategy = DltStrategy.FAIL_ON_ERROR,
+            autoStartDltHandler = "false",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
                        IllegalArgumentException.class, ConstraintViolationException.class}
     )
@@ -111,6 +117,8 @@ public class BookingEventConsumer {
             attempts = "4",
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
+            dltStrategy = DltStrategy.FAIL_ON_ERROR,
+            autoStartDltHandler = "false",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
                        IllegalArgumentException.class, ConstraintViolationException.class}
     )
@@ -132,6 +140,8 @@ public class BookingEventConsumer {
             attempts = "4",
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
+            dltStrategy = DltStrategy.FAIL_ON_ERROR,
+            autoStartDltHandler = "false",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
                        IllegalArgumentException.class, ConstraintViolationException.class}
     )
@@ -150,6 +160,8 @@ public class BookingEventConsumer {
             attempts = "4",
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
             dltTopicSuffix = ".dlq",
+            dltStrategy = DltStrategy.FAIL_ON_ERROR,
+            autoStartDltHandler = "false",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
                        IllegalArgumentException.class, ConstraintViolationException.class}
     )

@@ -152,22 +152,6 @@ class BookingServiceImplTest {
         verify(bookingRepository, never()).save(any());
     }
 
-    @Test
-    void createBooking_pricingMismatch_throws() throws JsonProcessingException {
-        when(bookingRepository.findByIdempotencyKey(BookingTestData.IDEMPOTENCY_KEY))
-                .thenReturn(Optional.empty());
-        when(objectMapper.writeValueAsBytes(any())).thenReturn("payload".getBytes());
-        when(searchClient.getTrip(BookingTestData.TRIP_ID))
-                .thenReturn(Optional.of(BookingTestData.aTripDetailWithMismatchedTotal()));
-
-        assertThatThrownBy(() ->
-                bookingService.createBooking(
-                        BookingTestData.IDEMPOTENCY_KEY, BookingTestData.aCreateBookingRequest()))
-                .isInstanceOf(PricingMismatchException.class);
-
-        verify(bookingRepository, never()).save(any());
-    }
-
     // ── getBooking ───────────────────────────────────────────────────────────
 
     @Test

@@ -2,7 +2,7 @@ package com.atlas.booking.booking.messaging;
 
 import com.atlas.booking.booking.entity.OutboxEvent;
 import com.atlas.booking.booking.repository.OutboxRepository;
-import com.atlas.booking.shared.messaging.EventEnvelope;
+import com.atlas.booking.booking.event.EventEnvelope;
 import com.atlas.booking.shared.messaging.EventType;
 import com.atlas.booking.shared.web.CorrelationIdFilter;
 import com.fasterxml.jackson.core.JsonProcessingException;
