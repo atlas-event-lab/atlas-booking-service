@@ -62,7 +62,6 @@ class BookingControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.bookingId").value(BookingTestData.BOOKING_ID.toString()))
-                .andExpect(jsonPath("$.tripId").value(BookingTestData.TRIP_ID.toString()))
                 .andExpect(jsonPath("$.status").value("PENDING"));
     }
 
@@ -322,9 +321,7 @@ class BookingControllerTest {
 
     @Test
     void createBooking_emptyTravelersList_returns_400() throws Exception {
-        var request = new CreateBookingRequest(
-                BookingTestData.TRIP_ID,
-                List.of());
+        var request = new CreateBookingRequest(List.of(), List.of());
 
         mvc.perform(post(BASE_URL)
                         .with(jwt())

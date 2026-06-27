@@ -1,14 +1,18 @@
 package com.atlas.booking.booking.service;
 
-import com.atlas.booking.booking.client.SearchClient;
+import com.atlas.booking.booking.client.FlightPriceClient;
+import com.atlas.booking.booking.client.HotelPriceClient;
+import com.atlas.booking.booking.client.dto.FlightPriceResponse;
+import com.atlas.booking.booking.client.dto.MoneyDto;
+import com.atlas.booking.booking.client.dto.RoomTypePriceResponse;
 import com.atlas.booking.booking.entity.Booking;
 import com.atlas.booking.booking.entity.BookingStatus;
 import com.atlas.booking.booking.exception.BookingAccessDeniedException;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
 import com.atlas.booking.booking.exception.BookingNotCancellableException;
+import com.atlas.booking.booking.exception.CatalogUnavailableException;
+import com.atlas.booking.booking.exception.CatalogValidationException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
-import com.atlas.booking.booking.exception.PricingMismatchException;
-import com.atlas.booking.booking.exception.TripNotFoundException;
 import com.atlas.booking.booking.mapper.BookingMapper;
 import com.atlas.booking.booking.messaging.OutboxEventWriter;
 import com.atlas.booking.booking.repository.BookingRepository;
@@ -17,6 +21,9 @@ import com.atlas.booking.booking.support.BookingTestData;
 import com.atlas.booking.shared.messaging.EventType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.FeignException;
+import feign.Request;
+import feign.RequestTemplate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +35,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
+import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -44,7 +52,8 @@ class BookingServiceImplTest {
 
     @Mock BookingRepository         bookingRepository;
     @Mock ConsumedEventRepository   consumedEventRepository;
-    @Mock SearchClient              searchClient;
+    @Mock FlightPriceClient         flightPriceClient;
+    @Mock HotelPriceClient          hotelPriceClient;
     @Mock ObjectMapper              objectMapper;
     @Mock OutboxEventWriter         outboxEventWriter;
     @Mock BookingMapper             bookingMapper;
@@ -73,8 +82,10 @@ class BookingServiceImplTest {
         when(bookingRepository.findByIdempotencyKey(BookingTestData.IDEMPOTENCY_KEY))
                 .thenReturn(Optional.empty());
         when(objectMapper.writeValueAsBytes(any())).thenReturn("payload".getBytes());
-        when(searchClient.getTrip(BookingTestData.TRIP_ID))
-                .thenReturn(Optional.of(BookingTestData.aTripDetail()));
+        when(flightPriceClient.getFlightPrice(BookingTestData.FLIGHT_ID))
+                .thenReturn(BookingTestData.aFlightPriceResponse());
+        when(hotelPriceClient.getRoomTypePrice(BookingTestData.HOTEL_ID, BookingTestData.ROOM_TYPE_ID))
+                .thenReturn(BookingTestData.aRoomTypePriceResponse());
         when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
         when(bookingMapper.toResponse(any(Booking.class))).thenReturn(BookingTestData.aBookingResponse());
 
@@ -96,7 +107,7 @@ class BookingServiceImplTest {
         // Compute the hash that the service will generate so the stored hash matches
         String storedHash = computeSha256Hex(payloadBytes);
         Booking existing = new Booking(
-                BookingTestData.BOOKING_ID, BookingTestData.USER_ID, BookingTestData.TRIP_ID,
+                BookingTestData.BOOKING_ID, BookingTestData.USER_ID,
                 BookingStatus.PENDING,
                 new com.atlas.booking.booking.entity.Money(BookingTestData.TOTAL_AMOUNT, BookingTestData.CURRENCY),
                 BookingTestData.CORRELATION_ID, BookingTestData.SAGA_ID,
@@ -120,7 +131,7 @@ class BookingServiceImplTest {
         when(objectMapper.writeValueAsBytes(any())).thenReturn("payload".getBytes());
 
         Booking existing = new Booking(
-                BookingTestData.BOOKING_ID, BookingTestData.USER_ID, BookingTestData.TRIP_ID,
+                BookingTestData.BOOKING_ID, BookingTestData.USER_ID,
                 BookingStatus.PENDING,
                 new com.atlas.booking.booking.entity.Money(BookingTestData.TOTAL_AMOUNT, BookingTestData.CURRENCY),
                 BookingTestData.CORRELATION_ID, BookingTestData.SAGA_ID,
@@ -138,16 +149,63 @@ class BookingServiceImplTest {
     }
 
     @Test
-    void createBooking_tripNotFound_throws() throws JsonProcessingException {
+    void createBooking_flightWithdrawn_throws422() throws JsonProcessingException {
         when(bookingRepository.findByIdempotencyKey(BookingTestData.IDEMPOTENCY_KEY))
                 .thenReturn(Optional.empty());
         when(objectMapper.writeValueAsBytes(any())).thenReturn("payload".getBytes());
-        when(searchClient.getTrip(BookingTestData.TRIP_ID)).thenReturn(Optional.empty());
+        when(flightPriceClient.getFlightPrice(BookingTestData.FLIGHT_ID))
+                .thenReturn(new FlightPriceResponse(
+                        BookingTestData.FLIGHT_ID,
+                        new MoneyDto(BookingTestData.FLIGHT_UNIT_PRICE, BookingTestData.CURRENCY),
+                        "WITHDRAWN"));
 
         assertThatThrownBy(() ->
                 bookingService.createBooking(
                         BookingTestData.IDEMPOTENCY_KEY, BookingTestData.aCreateBookingRequest()))
-                .isInstanceOf(TripNotFoundException.class);
+                .isInstanceOf(CatalogValidationException.class)
+                .hasMessageContaining("not ACTIVE");
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void createBooking_priceMismatch_throws422() throws JsonProcessingException {
+        when(bookingRepository.findByIdempotencyKey(BookingTestData.IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(objectMapper.writeValueAsBytes(any())).thenReturn("payload".getBytes());
+        when(flightPriceClient.getFlightPrice(BookingTestData.FLIGHT_ID))
+                .thenReturn(new FlightPriceResponse(
+                        BookingTestData.FLIGHT_ID,
+                        new MoneyDto(new java.math.BigDecimal("999.00"), BookingTestData.CURRENCY),
+                        "ACTIVE"));
+
+        assertThatThrownBy(() ->
+                bookingService.createBooking(
+                        BookingTestData.IDEMPOTENCY_KEY, BookingTestData.aCreateBookingRequest()))
+                .isInstanceOf(CatalogValidationException.class)
+                .hasMessageContaining("Price mismatch");
+
+        verify(bookingRepository, never()).save(any());
+    }
+
+    @Test
+    void createBooking_catalogUnavailable_throws503() throws JsonProcessingException {
+        when(bookingRepository.findByIdempotencyKey(BookingTestData.IDEMPOTENCY_KEY))
+                .thenReturn(Optional.empty());
+        when(objectMapper.writeValueAsBytes(any())).thenReturn("payload".getBytes());
+
+        Request feignRequest = Request.create(
+                Request.HttpMethod.GET, "/api/v1/flights/" + BookingTestData.FLIGHT_ID + "/price",
+                Collections.emptyMap(), null, new RequestTemplate());
+        when(flightPriceClient.getFlightPrice(BookingTestData.FLIGHT_ID))
+                .thenThrow(new FeignException.ServiceUnavailable(
+                        "Service Unavailable", feignRequest, null, null));
+
+        assertThatThrownBy(() ->
+                bookingService.createBooking(
+                        BookingTestData.IDEMPOTENCY_KEY, BookingTestData.aCreateBookingRequest()))
+                .isInstanceOf(CatalogUnavailableException.class)
+                .hasMessageContaining("Flight service unavailable");
 
         verify(bookingRepository, never()).save(any());
     }

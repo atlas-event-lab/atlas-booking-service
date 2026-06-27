@@ -12,7 +12,6 @@ import java.util.UUID;
 public record BookingCreatedPayload(
         UUID bookingId,
         UUID userId,
-        UUID tripId,
         List<BookingItemEvent> items,
         Integer travelers,
         MoneyEvent total

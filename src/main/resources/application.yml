@@ -49,8 +49,10 @@ spring:
         spring.json.use.type.headers: 'false'
 
 clients:
-  search:
-    base-url: ${SEARCH_SERVICE_URL:http://localhost:8081}
+  flight:
+    base-url: ${FLIGHT_SERVICE_URL:http://localhost:8082}
+  hotel:
+    base-url: ${HOTEL_SERVICE_URL:http://localhost:8083}
 
 atlas:
   outbox:
@@ -73,14 +75,7 @@ management:
     health:
       show-details: when-authorized
 
-#logging:
-#  level:
-#    com.atlas: INFO
-#    org.springframework.security: WARN
-
 logging:
   level:
-    com.atlas: DEBUG
-    org.springframework.security: TRACE
-    org.springframework.security.web.FilterChainProxy: TRACE
-    org.springframework.security.oauth2.server.resource: TRACE
+    com.atlas: INFO
+    org.springframework.security: WARN

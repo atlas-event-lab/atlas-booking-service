@@ -5,19 +5,20 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Request body for POST /bookings (booking.yaml CreateBookingRequest).
- * The total is never client-supplied; it is recomputed from the Trip (feature.md).
+ * The total is never client-supplied; it is recomputed server-side from validated unit prices.
  */
 public record CreateBookingRequest(
 
         @NotNull
-        UUID tripId,
+        @Size(min = 1)
+        @Valid
+        List<TravelerRequest> travelers,
 
         @NotNull
         @Size(min = 1)
         @Valid
-        List<TravelerRequest> travelers
+        List<BookingItemSelectionRequest> items
 ) {}

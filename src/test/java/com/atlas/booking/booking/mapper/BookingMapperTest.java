@@ -54,7 +54,6 @@ class BookingMapperTest {
         BookingResponse response = bookingMapper.toResponse(booking);
 
         assertThat(response.bookingId()).isEqualTo(BookingTestData.BOOKING_ID);
-        assertThat(response.tripId()).isEqualTo(BookingTestData.TRIP_ID);
         assertThat(response.status()).isEqualTo(ApiBookingStatus.PENDING);
         assertThat(response.total().amount()).isEqualByComparingTo(BookingTestData.TOTAL_AMOUNT);
         assertThat(response.total().currency()).isEqualTo(BookingTestData.CURRENCY);

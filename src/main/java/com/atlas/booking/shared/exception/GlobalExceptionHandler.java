@@ -3,10 +3,11 @@ package com.atlas.booking.shared.exception;
 import com.atlas.booking.booking.exception.BookingAccessDeniedException;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
 import com.atlas.booking.booking.exception.BookingNotCancellableException;
+import com.atlas.booking.booking.exception.CatalogUnavailableException;
+import com.atlas.booking.booking.exception.CatalogValidationException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
 import com.atlas.booking.booking.exception.InvalidStateTransitionException;
 import com.atlas.booking.booking.exception.PricingMismatchException;
-import com.atlas.booking.booking.exception.TripNotFoundException;
 import com.atlas.booking.shared.web.CorrelationIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -101,7 +102,7 @@ public class GlobalExceptionHandler {
         return respond(HttpStatus.CONFLICT, problem);
     }
 
-    @ExceptionHandler({TripNotFoundException.class, PricingMismatchException.class})
+    @ExceptionHandler({CatalogValidationException.class, PricingMismatchException.class})
     public ResponseEntity<ProblemDetail> handleUnprocessableBooking(
             RuntimeException ex, HttpServletRequest request) {
 
@@ -109,6 +110,18 @@ public class GlobalExceptionHandler {
                 ProblemTypes.UNPROCESSABLE, "Unprocessable Entity", request);
 
         return respond(HttpStatus.UNPROCESSABLE_ENTITY, problem);
+    }
+
+    @ExceptionHandler(CatalogUnavailableException.class)
+    public ResponseEntity<ProblemDetail> handleCatalogUnavailable(
+            CatalogUnavailableException ex, HttpServletRequest request) {
+
+        log.warn("Catalog service unavailable: {}", ex.getMessage());
+
+        ProblemDetail problem = problemOf(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(),
+                ProblemTypes.SERVICE_UNAVAILABLE, "Service Unavailable", request);
+
+        return respond(HttpStatus.SERVICE_UNAVAILABLE, problem);
     }
 
     @ExceptionHandler(IdempotencyConflictException.class)

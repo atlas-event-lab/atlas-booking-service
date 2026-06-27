@@ -51,9 +51,6 @@ public class Booking {
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
-    @Column(name = "trip_id", nullable = false, updatable = false)
-    private UUID tripId;
-
     @Setter
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
@@ -111,12 +108,11 @@ public class Booking {
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<BookingStatusHistory> statusHistory = new ArrayList<>();
 
-    public Booking(UUID bookingId, UUID userId, UUID tripId, BookingStatus status,
+    public Booking(UUID bookingId, UUID userId, BookingStatus status,
                    Money total, String correlationId, UUID sagaId,
                    String idempotencyKey, String requestHash) {
         this.bookingId = bookingId;
         this.userId = userId;
-        this.tripId = tripId;
         this.status = status;
         this.total = total;
         this.correlationId = correlationId;

@@ -1,8 +1,11 @@
 package com.atlas.booking.booking.service;
 
-import com.atlas.booking.booking.client.SearchClient;
-import com.atlas.booking.booking.client.dto.TripDetailResponse;
-import com.atlas.booking.booking.client.dto.TripItemResponse;
+import com.atlas.booking.booking.client.FlightPriceClient;
+import com.atlas.booking.booking.client.HotelPriceClient;
+import com.atlas.booking.booking.client.dto.FlightPriceResponse;
+import com.atlas.booking.booking.client.dto.MoneyDto;
+import com.atlas.booking.booking.client.dto.RoomTypePriceResponse;
+import com.atlas.booking.booking.dto.BookingItemSelectionRequest;
 import com.atlas.booking.booking.dto.BookingResponse;
 import com.atlas.booking.booking.dto.CancelBookingRequest;
 import com.atlas.booking.booking.dto.CreateBookingRequest;
@@ -21,8 +24,9 @@ import com.atlas.booking.booking.event.MoneyEvent;
 import com.atlas.booking.booking.exception.BookingAccessDeniedException;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
 import com.atlas.booking.booking.exception.BookingNotCancellableException;
+import com.atlas.booking.booking.exception.CatalogUnavailableException;
+import com.atlas.booking.booking.exception.CatalogValidationException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
-import com.atlas.booking.booking.exception.TripNotFoundException;
 import com.atlas.booking.booking.mapper.BookingMapper;
 import com.atlas.booking.booking.messaging.OutboxEventWriter;
 import com.atlas.booking.booking.repository.BookingRepository;
@@ -31,6 +35,7 @@ import com.atlas.booking.shared.messaging.EventType;
 import com.atlas.booking.shared.messaging.ConsumerEventType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -38,6 +43,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -47,7 +54,7 @@ import java.util.UUID;
 
 /**
  * Booking Service implementation.
- * Handles pricing validation via Search Service, idempotency, state-transition
+ * Handles pricing validation via Flight/Hotel Services, idempotency, state-transition
  * guarding, Booking persistence, and Saga choreography participation.
  * All entity-to-DTO mapping is performed here before returning to callers
  * (coding-standards §Layer Responsibilities).
@@ -57,9 +64,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BookingServiceImpl implements BookingService {
 
+    private static final String ACTIVE_STATUS = "ACTIVE";
+
     private final BookingRepository bookingRepository;
     private final ConsumedEventRepository consumedEventRepository;
-    private final SearchClient searchClient;
+    private final FlightPriceClient flightPriceClient;
+    private final HotelPriceClient hotelPriceClient;
     private final ObjectMapper objectMapper;
     private final OutboxEventWriter outboxEventWriter;
     private final BookingMapper bookingMapper;
@@ -87,29 +97,52 @@ public class BookingServiceImpl implements BookingService {
 
         UUID userId = extractUserId();
 
-        // Resolve Trip from Search — read-only, pricing validation only (ARCH-003, ARCH-006)
-        TripDetailResponse tripDetail = searchClient.getTrip(request.tripId())
-                .orElseThrow(() -> new TripNotFoundException(request.tripId()));
+        // Validate each item against its catalog service and compute total server-side
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        String currency = null;
 
-        // Recompute Grand Total from Trip items and validate against the Trip total
-        Money total = new Money(tripDetail.total().amount(), tripDetail.total().currency());
+        for (BookingItemSelectionRequest item : request.items()) {
+            validateCatalogPrice(item);
+
+            if (currency == null) {
+                currency = item.unitPrice().currency();
+            }
+
+            BigDecimal lineTotal = item.unitPrice().amount()
+                    .multiply(BigDecimal.valueOf(item.quantity()))
+                    .setScale(2, RoundingMode.HALF_UP);
+            totalAmount = totalAmount.add(lineTotal);
+        }
+
+        totalAmount = totalAmount.setScale(2, RoundingMode.HALF_UP);
+        Money total = new Money(totalAmount, currency);
 
         UUID bookingId    = UUID.randomUUID();
         UUID sagaId       = UUID.randomUUID();
         String correlationId = UUID.randomUUID().toString();
 
         Booking booking = new Booking(
-                bookingId, userId, request.tripId(),
-                BookingStatus.PENDING, total, correlationId, sagaId, idempotencyKey, incomingHash);
+            bookingId,
+            userId,
+            BookingStatus.PENDING,
+            total,
+            correlationId,
+            sagaId,
+            idempotencyKey,
+            incomingHash
+        );
 
-        for (TripItemResponse tripItem : tripDetail.items()) {
+        for (BookingItemSelectionRequest item : request.items()) {
+            BigDecimal lineTotal = item.unitPrice().amount()
+                    .multiply(BigDecimal.valueOf(item.quantity()))
+                    .setScale(2, RoundingMode.HALF_UP);
             booking.addItem(new BookingItem(
                     UUID.randomUUID(),
-                    BookingItemType.valueOf(tripItem.type()),
-                tripItem.resourceId(),
-                tripItem.quantity(),
-                    tripItem.unitPrice().amount(),
-                    tripItem.lineTotal().amount()
+                    item.type(),
+                    item.resourceId(),
+                    item.quantity(),
+                    item.unitPrice().amount(),
+                    lineTotal
             ));
         }
 
@@ -138,8 +171,8 @@ public class BookingServiceImpl implements BookingService {
             saved.getSagaId().toString(),
             buildCreatedPayload(saved));
 
-        log.info("Booking created: bookingId={}, userId={}, tripId={}, sagaId={}, correlationId={}",
-                bookingId, userId, request.tripId(), sagaId, correlationId);
+        log.info("Booking created: bookingId={}, userId={}, sagaId={}, correlationId={}",
+                bookingId, userId, sagaId, correlationId);
 
         return new BookingCreationResult(bookingMapper.toResponse(saved), false);
     }
@@ -360,6 +393,74 @@ public class BookingServiceImpl implements BookingService {
     }
 
     // -------------------------------------------------------------------------
+    // Catalog price validation
+    // -------------------------------------------------------------------------
+
+    private void validateCatalogPrice(BookingItemSelectionRequest item) {
+        if (item.type() == BookingItemType.FLIGHT) {
+            validateFlightPrice(item);
+        } else if (item.type() == BookingItemType.HOTEL) {
+            validateHotelPrice(item);
+        }
+    }
+
+    private void validateFlightPrice(BookingItemSelectionRequest item) {
+        FlightPriceResponse flightPrice;
+        try {
+            flightPrice = flightPriceClient.getFlightPrice(item.resourceId());
+        } catch (FeignException e) {
+            throw new CatalogUnavailableException(
+                    "Flight service unavailable for flightId=" + item.resourceId(), e);
+        }
+
+        if (!ACTIVE_STATUS.equals(flightPrice.status())) {
+            throw new CatalogValidationException(
+                    "Flight " + item.resourceId() + " is not ACTIVE (status=" + flightPrice.status() + ")");
+        }
+
+        if (!pricesMatch(item.unitPrice(), flightPrice.basePrice())) {
+            throw new CatalogValidationException(
+                    "Price mismatch for flight " + item.resourceId()
+                    + ": client=" + item.unitPrice().amount() + " " + item.unitPrice().currency()
+                    + ", catalog=" + flightPrice.basePrice().amount() + " " + flightPrice.basePrice().currency());
+        }
+    }
+
+    private void validateHotelPrice(BookingItemSelectionRequest item) {
+        if (item.hotelId() == null) {
+            throw new CatalogValidationException(
+                    "hotelId is required for HOTEL items (roomTypeId=" + item.resourceId() + ")");
+        }
+
+        RoomTypePriceResponse roomPrice;
+        try {
+            roomPrice = hotelPriceClient.getRoomTypePrice(item.hotelId(), item.resourceId());
+        } catch (FeignException e) {
+            throw new CatalogUnavailableException(
+                    "Hotel service unavailable for hotelId=" + item.hotelId()
+                    + ", roomTypeId=" + item.resourceId(), e);
+        }
+
+        if (!ACTIVE_STATUS.equals(roomPrice.status())) {
+            throw new CatalogValidationException(
+                    "Room type " + item.resourceId() + " in hotel " + item.hotelId()
+                    + " is not ACTIVE (status=" + roomPrice.status() + ")");
+        }
+
+        if (!pricesMatch(item.unitPrice(), roomPrice.pricePerNight())) {
+            throw new CatalogValidationException(
+                    "Price mismatch for room type " + item.resourceId()
+                    + ": client=" + item.unitPrice().amount() + " " + item.unitPrice().currency()
+                    + ", catalog=" + roomPrice.pricePerNight().amount() + " " + roomPrice.pricePerNight().currency());
+        }
+    }
+
+    private boolean pricesMatch(MoneyDto clientPrice, MoneyDto catalogPrice) {
+        return clientPrice.amount().compareTo(catalogPrice.amount()) == 0
+                && clientPrice.currency().equals(catalogPrice.currency());
+    }
+
+    // -------------------------------------------------------------------------
     // Kafka payload builders
     // -------------------------------------------------------------------------
 
@@ -377,7 +478,6 @@ public class BookingServiceImpl implements BookingService {
         return new BookingCreatedPayload(
                 booking.getBookingId(),
                 booking.getUserId(),
-                booking.getTripId(),
                 items,
                 booking.getTravelers().size(),
                 new MoneyEvent(booking.getTotal().getAmount(), booking.getTotal().getCurrency()));

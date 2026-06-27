@@ -10,7 +10,8 @@ public final class ProblemTypes {
     public static final URI FORBIDDEN        = URI.create("https://atlas/errors/forbidden");
     public static final URI CONFLICT         = URI.create("https://atlas/errors/conflict");
     public static final URI UNPROCESSABLE    = URI.create("https://atlas/errors/unprocessable");
-    public static final URI INTERNAL_ERROR   = URI.create("https://atlas/errors/internal-server-error");
+    public static final URI INTERNAL_ERROR      = URI.create("https://atlas/errors/internal-server-error");
+    public static final URI SERVICE_UNAVAILABLE = URI.create("https://atlas/errors/service-unavailable");
 
     private ProblemTypes() {}
 }

@@ -16,10 +16,12 @@ public record BookingItemSelectionRequest(
         @NotNull
         UUID resourceId,
 
+        UUID hotelId,
+
         @NotNull
         @Min(1)
         Integer quantity,
 
         @NotNull
-        MoneyDto price
+        MoneyDto unitPrice
 ) {}

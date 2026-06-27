@@ -10,7 +10,6 @@ import java.util.UUID;
  */
 public record BookingResponse(
         UUID bookingId,
-        UUID tripId,
         ApiBookingStatus status,
         MoneyResponse total,
         Instant createdAt
