@@ -1,5 +1,6 @@
 package com.atlas.booking.booking.dto;
 
+import com.atlas.booking.booking.client.dto.MoneyDto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -20,5 +21,8 @@ public record CreateBookingRequest(
         @NotNull
         @Size(min = 1)
         @Valid
-        List<BookingItemSelectionRequest> items
+        List<BookingItemSelectionRequest> items,
+
+        @NotNull
+        MoneyDto total
 ) {}

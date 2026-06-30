@@ -1,6 +1,13 @@
 server:
   port: 8080
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+
+  swagger-ui:
+    path: /swagger-ui.html
+
 spring:
   application:
     name: booking-service
@@ -53,6 +60,8 @@ clients:
     base-url: ${FLIGHT_SERVICE_URL:http://localhost:8082}
   hotel:
     base-url: ${HOTEL_SERVICE_URL:http://localhost:8083}
+  frankfurter:
+    base-url: https://api.frankfurter.dev
 
 atlas:
   outbox:

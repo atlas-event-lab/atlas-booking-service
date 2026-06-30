@@ -1,7 +1,9 @@
 package com.atlas.booking.booking.service;
 
+import com.atlas.booking.booking.client.ExchangeRateClient;
 import com.atlas.booking.booking.client.FlightPriceClient;
 import com.atlas.booking.booking.client.HotelPriceClient;
+import com.atlas.booking.booking.client.dto.ExchangeRateDto;
 import com.atlas.booking.booking.client.dto.FlightPriceResponse;
 import com.atlas.booking.booking.client.dto.MoneyDto;
 import com.atlas.booking.booking.client.dto.RoomTypePriceResponse;
@@ -27,6 +29,7 @@ import com.atlas.booking.booking.exception.BookingNotCancellableException;
 import com.atlas.booking.booking.exception.CatalogUnavailableException;
 import com.atlas.booking.booking.exception.CatalogValidationException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
+import com.atlas.booking.booking.exception.PricingMismatchException;
 import com.atlas.booking.booking.mapper.BookingMapper;
 import com.atlas.booking.booking.messaging.OutboxEventWriter;
 import com.atlas.booking.booking.repository.BookingRepository;
@@ -65,6 +68,7 @@ import java.util.UUID;
 public class BookingServiceImpl implements BookingService {
 
     private static final String ACTIVE_STATUS = "ACTIVE";
+    private static final String CURRENCY_USD = "USD";
 
     private final BookingRepository bookingRepository;
     private final ConsumedEventRepository consumedEventRepository;
@@ -73,6 +77,8 @@ public class BookingServiceImpl implements BookingService {
     private final ObjectMapper objectMapper;
     private final OutboxEventWriter outboxEventWriter;
     private final BookingMapper bookingMapper;
+    private final ExchangeRateClient exchangeRateClient;
+
 
     // -------------------------------------------------------------------------
     // REST handlers
@@ -99,23 +105,20 @@ public class BookingServiceImpl implements BookingService {
 
         // Validate each item against its catalog service and compute total server-side
         BigDecimal totalAmount = BigDecimal.ZERO;
-        String currency = null;
 
         for (BookingItemSelectionRequest item : request.items()) {
             validateCatalogPrice(item);
 
-            if (currency == null) {
-                currency = item.unitPrice().currency();
-            }
-
-            BigDecimal lineTotal = item.unitPrice().amount()
+            BigDecimal lineTotal = getUSDPrice(item)
                     .multiply(BigDecimal.valueOf(item.quantity()))
-                    .setScale(2, RoundingMode.HALF_UP);
+                    .setScale(2, RoundingMode.HALF_EVEN);
             totalAmount = totalAmount.add(lineTotal);
         }
 
-        totalAmount = totalAmount.setScale(2, RoundingMode.HALF_UP);
-        Money total = new Money(totalAmount, currency);
+        totalAmount = totalAmount.setScale(2, RoundingMode.HALF_EVEN);
+        Money total = new Money(totalAmount, request.items().getFirst().unitPrice().currency());
+
+        validateTotalAmount(request.total().amount(), totalAmount);
 
         UUID bookingId    = UUID.randomUUID();
         UUID sagaId       = UUID.randomUUID();
@@ -132,10 +135,11 @@ public class BookingServiceImpl implements BookingService {
             incomingHash
         );
 
-        for (BookingItemSelectionRequest item : request.items()) {
-            BigDecimal lineTotal = item.unitPrice().amount()
+       request.items().forEach( item -> {
+            BigDecimal lineTotal = getUSDPrice(item)
                     .multiply(BigDecimal.valueOf(item.quantity()))
-                    .setScale(2, RoundingMode.HALF_UP);
+                    .setScale(2, RoundingMode.HALF_EVEN);
+
             booking.addItem(new BookingItem(
                     UUID.randomUUID(),
                     item.type(),
@@ -144,9 +148,9 @@ public class BookingServiceImpl implements BookingService {
                     item.unitPrice().amount(),
                     lineTotal
             ));
-        }
+        });
 
-        for (var travelerRequest : request.travelers()) {
+       request.travelers().forEach( travelerRequest ->
             booking.addTraveler(new Traveler(
                     UUID.randomUUID(),
                     travelerRequest.firstName(),
@@ -156,8 +160,8 @@ public class BookingServiceImpl implements BookingService {
                     travelerRequest.documentType(),
                     travelerRequest.documentNumber(),
                     travelerRequest.email(),
-                    travelerRequest.phoneNumber()));
-        }
+                    travelerRequest.phoneNumber()))
+       );
 
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), null, BookingStatus.PENDING));
 
@@ -458,6 +462,48 @@ public class BookingServiceImpl implements BookingService {
     private boolean pricesMatch(MoneyDto clientPrice, MoneyDto catalogPrice) {
         return clientPrice.amount().compareTo(catalogPrice.amount()) == 0
                 && clientPrice.currency().equals(catalogPrice.currency());
+    }
+
+    private BigDecimal getUSDPrice(BookingItemSelectionRequest item) {
+        BigDecimal unitUSDPrice;
+        if (item.unitPrice().currency().equals(CURRENCY_USD)) {
+            unitUSDPrice = item.unitPrice().amount();
+
+        } else {
+            BigDecimal rateToUSD = getRateConversionToUSD(item.unitPrice().currency());
+            unitUSDPrice = item.unitPrice().amount().divide(rateToUSD, RoundingMode.HALF_EVEN);
+        }
+
+        return unitUSDPrice;
+    }
+
+    private BigDecimal getRateConversionToUSD(String currency) {
+        if (currency.equals(CURRENCY_USD)) return BigDecimal.ONE;
+        List<ExchangeRateDto> exchangeRates;
+
+        try {
+          exchangeRates = exchangeRateClient.getUSDExchangeRates();
+        } catch (FeignException e) {
+            throw new PricingMismatchException(
+                "Exchange Rate API unavailable for Currency=" + currency + ".Details: "+ e.getMessage());
+        }
+        return exchangeRates.stream()
+            .filter(exchange ->
+                exchange.quote().equals(currency)
+            ).map(ExchangeRateDto::rate)
+            .findFirst()
+            .orElseThrow(() ->
+                new PricingMismatchException(
+                    "Currency "+ currency +" is not available in exchange rate catalog"));
+    }
+
+    private void validateTotalAmount(BigDecimal requestTotalAmount, BigDecimal calculatedTotalAmount) {
+        if(requestTotalAmount.compareTo(calculatedTotalAmount) != 0) {
+            throw new PricingMismatchException(
+                "Request Total Amount mismatch: "
+                    + "ReqTotalAmount="+requestTotalAmount+
+                    ", CalculatedTotalAmount="+calculatedTotalAmount);
+        }
     }
 
     // -------------------------------------------------------------------------
