@@ -24,7 +24,7 @@ public final class EventTopics {
     // ── Booking Service consumes (owned by Payment Service) ───────────────────
     public static final String PAYMENT_SUCCEEDED  = "payment.succeeded";
     public static final String PAYMENT_FAILED     = "payment.failed";
-    public static final String PAYMENT_TIMED_OUT  = "payment.timed-out";
+    public static final String PAYMENT_TIMED_OUT  = "payment.timed_out";
 
     private EventTopics() {}
 }
