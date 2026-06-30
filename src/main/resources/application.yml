@@ -57,9 +57,9 @@ spring:
 
 clients:
   flight:
-    base-url: ${FLIGHT_SERVICE_URL:http://localhost:8082}
+    base-url: ${FLIGHT_SERVICE_URL:http://localhost:8080}
   hotel:
-    base-url: ${HOTEL_SERVICE_URL:http://localhost:8083}
+    base-url: ${HOTEL_SERVICE_URL:http://localhost:8080}
   frankfurter:
     base-url: https://api.frankfurter.dev
 
@@ -76,6 +76,8 @@ atlas:
       scan-interval-ms: ${BOOKING_EXPIRATION_SCAN_INTERVAL_MS:60000}
 
 management:
+  server:
+    port: 9090
   endpoints:
     web:
       exposure:
@@ -83,6 +85,8 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      probes:
+        enabled: true
 
 logging:
   level:
