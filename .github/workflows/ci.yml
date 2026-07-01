@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: read
-  packages: write          # push to GHCR via GITHUB_TOKEN (no long-lived creds)
+  packages: write
 
 jobs:
   test:
@@ -16,17 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle      # reuse Gradle deps cache across runs
+        with: { distribution: temurin, java-version: '21', cache: gradle }
       - run: chmod +x ./gradlew
-      - name: Test
-        run: ./gradlew --no-daemon test
+      - run: ./gradlew --no-daemon test
 
   image:
     name: Build & push image
-    needs: test              # only runs if tests pass
+    needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -40,7 +36,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/${{ github.repository }}   # ghcr.io/<org>/atlas-<service>
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=sha,format=long
             type=raw,value=latest,enable={{is_default_branch}}
@@ -50,5 +46,32 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha          # reuse the dependency layer across runs
+          cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy (helm upgrade)
+    needs: image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitOps chart + values
+        uses: actions/checkout@v4
+        with:
+          repository: atlas-event-lab/atlas-gitops
+          path: gitops
+          # token: ${{ secrets.GITOPS_TOKEN }}   # uncomment if atlas-gitops is private
+      - uses: azure/setup-helm@v4
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+      - name: Helm upgrade with the immutable image tag
+        run: |
+          REPO="${GITHUB_REPOSITORY#*/}"      # atlas-booking-service
+          NAME="${REPO#atlas-}"              # booking-service   (helm release)
+          VALUES="${NAME%-service}"          # booking           (values/<svc>.yaml)
+          helm upgrade --install "$NAME" gitops/charts/atlas-service \
+            -f "gitops/charts/atlas-service/values/${VALUES}.yaml" -n atlas-apps \
+            --set image.tag="sha-${GITHUB_SHA}" \
+            --wait --timeout 5m
