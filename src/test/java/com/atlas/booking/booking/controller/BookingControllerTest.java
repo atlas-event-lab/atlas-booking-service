@@ -1,5 +1,6 @@
 package com.atlas.booking.booking.controller;
 
+import com.atlas.booking.booking.client.dto.MoneyDto;
 import com.atlas.booking.booking.dto.ApiBookingStatus;
 import com.atlas.booking.booking.dto.CancelBookingRequest;
 import com.atlas.booking.booking.dto.CreateBookingRequest;
@@ -14,6 +15,7 @@ import com.atlas.booking.booking.service.BookingService;
 import com.atlas.booking.booking.support.BookingTestData;
 import com.atlas.booking.config.SecurityConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -321,7 +323,7 @@ class BookingControllerTest {
 
     @Test
     void createBooking_emptyTravelersList_returns_400() throws Exception {
-        var request = new CreateBookingRequest(List.of(), List.of());
+        var request = new CreateBookingRequest(List.of(), List.of(), new MoneyDto(BigDecimal.ZERO, "USD"));
 
         mvc.perform(post(BASE_URL)
                         .with(jwt())

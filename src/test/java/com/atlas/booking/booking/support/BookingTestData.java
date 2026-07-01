@@ -67,7 +67,9 @@ public final class BookingTestData {
     public static CreateBookingRequest aCreateBookingRequest() {
         return new CreateBookingRequest(
                 List.of(aTraveler()),
-                List.of(aFlightItem(), aHotelItem()));
+                List.of(aFlightItem(), aHotelItem()),
+            new MoneyDto(new BigDecimal("500.00"), "USD")
+        );
     }
 
     public static FlightPriceResponse aFlightPriceResponse() {
