@@ -171,7 +171,7 @@ public class GlobalExceptionHandler {
         problem.setType(type);
         problem.setTitle(title);
         problem.setInstance(java.net.URI.create(request.getRequestURI()));
-        problem.setProperty("correlationId", MDC.get(CorrelationIdFilter.MDC_KEY));
+        problem.setProperty("correlationId", MDC.get(CorrelationIdFilter.MDC_CORRELATION_ID));
         return problem;
     }
 
