@@ -5,11 +5,13 @@ import com.atlas.booking.booking.exception.InvalidStateTransitionException;
 
 import java.util.Map;
 import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Enforces the Booking state machine (services/booking/state_machine.md).
  * Terminal states (CANCELLED, FAILED, EXPIRED) have no outgoing transitions.
  */
+@Slf4j
 public final class StateTransitionGuard {
 
     private static final Map<BookingStatus, Set<BookingStatus>> ALLOWED = Map.of(
@@ -37,6 +39,7 @@ public final class StateTransitionGuard {
     public static void assertAllowed(BookingStatus from, BookingStatus to) {
         Set<BookingStatus> reachable = ALLOWED.getOrDefault(from, Set.of());
         if (!reachable.contains(to)) {
+            log.error("Invalid State Transition from {} to {}", from.name(), to.name());
             throw new InvalidStateTransitionException(from, to);
         }
     }

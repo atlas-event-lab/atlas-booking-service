@@ -65,7 +65,7 @@ public class BookingEventConsumer {
         UUID eventId   = envelope.eventId();
         UUID bookingId = envelope.payload().bookingId();
 
-        log.debug("Received InventoryReserved: eventId={}, bookingId={}", eventId, bookingId);
+        log.info("Received InventoryReserved: eventId={}, bookingId={}", eventId, bookingId);
         bookingService.onInventoryReserved(eventId, bookingId);
     }
 
@@ -85,7 +85,7 @@ public class BookingEventConsumer {
         UUID eventId   = envelope.eventId();
         UUID bookingId = envelope.payload().bookingId();
 
-        log.debug("Received InventoryRejected: eventId={}, bookingId={}", eventId, bookingId);
+        log.info("Received InventoryRejected: eventId={}, bookingId={}", eventId, bookingId);
         bookingService.onInventoryRejected(eventId, bookingId);
     }
 
@@ -107,7 +107,7 @@ public class BookingEventConsumer {
         UUID eventId   = envelope.eventId();
         UUID bookingId = envelope.payload().bookingId();
 
-        log.debug("Received InventoryReleased: eventId={}, bookingId={}", eventId, bookingId);
+        log.info("Received InventoryReleased: eventId={}, bookingId={}", eventId, bookingId);
         bookingService.onInventoryReleased(eventId, bookingId);
     }
 
@@ -131,7 +131,7 @@ public class BookingEventConsumer {
         UUID bookingId = payload.bookingId();
         UUID paymentId = payload.paymentId();
 
-        log.debug("Received PaymentSucceeded: eventId={}, bookingId={}, paymentId={}",
+        log.info("Received PaymentSucceeded: eventId={}, bookingId={}, paymentId={}",
                 eventId, bookingId, paymentId);
         bookingService.onPaymentSucceeded(eventId, bookingId, paymentId);
     }
@@ -152,7 +152,7 @@ public class BookingEventConsumer {
         UUID eventId   = envelope.eventId();
         UUID bookingId = envelope.payload().bookingId();
 
-        log.debug("Received PaymentFailed: eventId={}, bookingId={}", eventId, bookingId);
+        log.info("Received PaymentFailed: eventId={}, bookingId={}", eventId, bookingId);
         bookingService.onPaymentFailed(eventId, bookingId);
     }
 
@@ -172,7 +172,7 @@ public class BookingEventConsumer {
         UUID eventId   = envelope.eventId();
         UUID bookingId = envelope.payload().bookingId();
 
-        log.debug("Received PaymentTimedOut: eventId={}, bookingId={}", eventId, bookingId);
+        log.info("Received PaymentTimedOut: eventId={}, bookingId={}", eventId, bookingId);
         bookingService.onPaymentTimedOut(eventId, bookingId);
     }
 }
