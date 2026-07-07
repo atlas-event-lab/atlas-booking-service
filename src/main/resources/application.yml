@@ -94,6 +94,14 @@ management:
   otlp:
     tracing:
       endpoint: ${MANAGEMENT_OTLP_TRACING_ENDPOINT:http://tempo.atlas-observability:4318/v1/traces}
+  metrics:
+    distribution:
+      # Native Prometheus histogram buckets for HTTP server timings, so Grafana can compute
+      # p95/p99 and draw per-endpoint latency heatmaps (RED / APM). Roadmap Phase 6/7.
+      percentiles-histogram:
+        http.server.requests: true
+      slo:
+        http.server.requests: 50ms,100ms,200ms,300ms,500ms,1s,2s,5s
   endpoints:
     web:
       exposure:
