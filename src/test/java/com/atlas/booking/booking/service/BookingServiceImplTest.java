@@ -12,6 +12,7 @@ import com.atlas.booking.booking.exception.BookingNotCancellableException;
 import com.atlas.booking.booking.exception.CatalogUnavailableException;
 import com.atlas.booking.booking.exception.CatalogValidationException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
+import com.atlas.booking.booking.exception.PrematureSagaEventException;
 import com.atlas.booking.booking.mapper.BookingMapper;
 import com.atlas.booking.booking.messaging.OutboxEventWriter;
 import com.atlas.booking.booking.repository.BookingRepository;
@@ -347,6 +348,71 @@ class BookingServiceImplTest {
 
     assertThat(booking.getStatus()).isEqualTo(BookingStatus.EXPIRED);
     verify(outboxEventWriter).write(any(), eq(EventType.BOOKING_EXPIRED), any(), any(), any());
+  }
+
+  // ── Saga: out-of-order payment arrivals (ADR-0007) ───────────────────────
+
+  @Test
+  void onPaymentSucceeded_in_PENDING_is_premature_and_retried() {
+    Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.PENDING);
+    when(consumedEventRepository.existsById(BookingTestData.EVENT_ID)).thenReturn(false);
+    when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+    // payment.succeeded outran inventory.reserved → defer (retryable), do not confirm.
+    assertThatThrownBy(() -> bookingService.onPaymentSucceeded(
+            BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID, BookingTestData.PAYMENT_ID))
+        .isInstanceOf(PrematureSagaEventException.class);
+
+    assertThat(booking.getStatus()).isEqualTo(BookingStatus.PENDING);
+    // Idempotency row is NOT written, so the retry re-processes cleanly (ADR-0007 §Decision 4).
+    verify(consumedEventRepository, never()).save(any());
+    verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void onPaymentFailed_in_PENDING_is_premature_and_retried() {
+    Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.PENDING);
+    when(consumedEventRepository.existsById(BookingTestData.EVENT_ID)).thenReturn(false);
+    when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+    assertThatThrownBy(() -> bookingService.onPaymentFailed(
+            BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID))
+        .isInstanceOf(PrematureSagaEventException.class);
+
+    assertThat(booking.getStatus()).isEqualTo(BookingStatus.PENDING);
+    verify(consumedEventRepository, never()).save(any());
+    verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void onPaymentTimedOut_in_PENDING_is_premature_and_retried() {
+    Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.PENDING);
+    when(consumedEventRepository.existsById(BookingTestData.EVENT_ID)).thenReturn(false);
+    when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+    assertThatThrownBy(() -> bookingService.onPaymentTimedOut(
+            BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID))
+        .isInstanceOf(PrematureSagaEventException.class);
+
+    assertThat(booking.getStatus()).isEqualTo(BookingStatus.PENDING);
+    verify(consumedEventRepository, never()).save(any());
+    verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void onPaymentSucceeded_in_terminal_state_still_DLQs() {
+    // A payment event landing on a terminal Booking is a genuine anomaly → non-retryable.
+    Booking booking = BookingTestData.aBookingWithStatus(BookingStatus.FAILED);
+    when(consumedEventRepository.existsById(BookingTestData.EVENT_ID)).thenReturn(false);
+    when(bookingRepository.findById(BookingTestData.BOOKING_ID)).thenReturn(Optional.of(booking));
+
+    assertThatThrownBy(() -> bookingService.onPaymentSucceeded(
+            BookingTestData.EVENT_ID, BookingTestData.BOOKING_ID, BookingTestData.PAYMENT_ID))
+        .isInstanceOf(com.atlas.booking.booking.exception.InvalidStateTransitionException.class);
+
+    assertThat(booking.getStatus()).isEqualTo(BookingStatus.FAILED);
+    verify(consumedEventRepository, never()).save(any());
+    verify(outboxEventWriter, never()).write(any(), any(), any(), any(), any());
   }
 
   // ── cancelBooking ────────────────────────────────────────────────────────

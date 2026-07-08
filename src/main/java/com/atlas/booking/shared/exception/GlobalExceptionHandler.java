@@ -109,7 +109,7 @@ public class GlobalExceptionHandler {
         ProblemDetail problem = problemOf(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(),
                 ProblemTypes.UNPROCESSABLE, "Unprocessable Entity", request);
 
-        log.error("Unprocessable Entity Exception. Details: ",ex);
+        log.error("Unprocessable Entity Exception. Details: {}", ex.getMessage());
         return respond(HttpStatus.UNPROCESSABLE_ENTITY, problem);
     }
 

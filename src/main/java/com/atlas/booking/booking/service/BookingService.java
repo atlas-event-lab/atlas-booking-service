@@ -58,18 +58,30 @@ public interface BookingService {
      * Transitions Booking from INVENTORY_RESERVED → CONFIRMED and publishes BookingConfirmed.
      * Also records the {@code paymentId} on the Booking.
      * Idempotent: re-delivered events are silently ignored (EVT-005).
+     * <p>
+     * Out-of-order tolerant (ADR-0007): if the event arrives while the Booking is still
+     * {@code PENDING} (its causal predecessor {@code inventory.reserved} not yet processed), it is
+     * deferred by throwing {@code PrematureSagaEventException} (retryable) rather than transitioned.
      */
     void onPaymentSucceeded(UUID eventId, UUID bookingId, UUID paymentId);
 
     /**
      * Transitions Booking from INVENTORY_RESERVED → FAILED and publishes BookingFailed.
      * Idempotent: re-delivered events are silently ignored (EVT-005).
+     * <p>
+     * Out-of-order tolerant (ADR-0007): if the event arrives while the Booking is still
+     * {@code PENDING}, it is deferred via {@code PrematureSagaEventException} (retryable), not
+     * transitioned directly.
      */
     void onPaymentFailed(UUID eventId, UUID bookingId);
 
     /**
      * Transitions Booking from INVENTORY_RESERVED → EXPIRED and publishes BookingExpired.
      * Idempotent: re-delivered events are silently ignored (EVT-005).
+     * <p>
+     * Out-of-order tolerant (ADR-0007): if the event arrives while the Booking is still
+     * {@code PENDING}, it is deferred via {@code PrematureSagaEventException} (retryable), not
+     * transitioned directly.
      */
     void onPaymentTimedOut(UUID eventId, UUID bookingId);
 

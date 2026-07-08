@@ -2,6 +2,7 @@ package com.atlas.booking.booking.service;
 
 import com.atlas.booking.booking.entity.BookingStatus;
 import com.atlas.booking.booking.exception.InvalidStateTransitionException;
+import com.atlas.booking.booking.exception.PrematureSagaEventException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -81,5 +82,47 @@ class StateTransitionGuardTest {
                     StateTransitionGuard.assertAllowed(BookingStatus.CANCELLED, target))
                     .isInstanceOf(InvalidStateTransitionException.class);
         }
+    }
+
+    // ── Payment transitions: three-way classification (ADR-0007) ──────────────
+
+    @ParameterizedTest(name = "PENDING → {0} (payment) is premature → retry")
+    @CsvSource({
+            "CONFIRMED",   // PAYMENT_SUCCEEDED
+            "FAILED",      // PAYMENT_FAILED
+            "EXPIRED"      // PAYMENT_TIMED_OUT
+    })
+    void paymentTransition_from_PENDING_is_premature(String to) {
+        assertThatThrownBy(() ->
+                StateTransitionGuard.assertPaymentTransition(
+                        BookingStatus.PENDING, BookingStatus.valueOf(to)))
+                .isInstanceOf(PrematureSagaEventException.class);
+    }
+
+    @ParameterizedTest(name = "INVENTORY_RESERVED → {0} (payment) is allowed")
+    @CsvSource({
+            "CONFIRMED",
+            "FAILED",
+            "EXPIRED"
+    })
+    void paymentTransition_from_INVENTORY_RESERVED_is_allowed(String to) {
+        assertThatCode(() ->
+                StateTransitionGuard.assertPaymentTransition(
+                        BookingStatus.INVENTORY_RESERVED, BookingStatus.valueOf(to)))
+                .doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest(name = "{0} → CONFIRMED (payment) from terminal is illegal")
+    @CsvSource({
+            "CONFIRMED",
+            "FAILED",
+            "EXPIRED",
+            "CANCELLED"
+    })
+    void paymentTransition_from_terminal_is_illegal(String from) {
+        assertThatThrownBy(() ->
+                StateTransitionGuard.assertPaymentTransition(
+                        BookingStatus.valueOf(from), BookingStatus.CONFIRMED))
+                .isInstanceOf(InvalidStateTransitionException.class);
     }
 }

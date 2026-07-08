@@ -37,6 +37,11 @@ import java.util.UUID;
  * {@link InvalidStateTransitionException}, {@link IllegalArgumentException}) go
  * straight to DLQ without retries (non-retryable per retry-strategy.md).
  * <p>
+ * Out-of-order Saga arrivals (ADR-0007) raise {@code PrematureSagaEventException}, which is
+ * deliberately kept <b>out</b> of every {@code exclude} list so the event flows through the
+ * retry ladder (its causal predecessor has virtually always been processed by the first retry)
+ * instead of being discarded to the DLQ as a false anomaly.
+ * <p>
  * DLQ topic naming: {@code <original-topic>.dlq} (dlq-strategy.md).
  */
 @Slf4j

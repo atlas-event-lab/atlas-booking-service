@@ -2,6 +2,7 @@ package com.atlas.booking.booking.service;
 
 import com.atlas.booking.booking.entity.BookingStatus;
 import com.atlas.booking.booking.exception.InvalidStateTransitionException;
+import com.atlas.booking.booking.exception.PrematureSagaEventException;
 
 import java.util.Map;
 import java.util.Set;
@@ -42,5 +43,30 @@ public final class StateTransitionGuard {
             log.error("Invalid State Transition from {} to {}", from.name(), to.name());
             throw new InvalidStateTransitionException(from, to);
         }
+    }
+
+    /**
+     * Asserts a transition triggered by a <em>Payment outcome</em> event
+     * ({@code PAYMENT_SUCCEEDED} / {@code PAYMENT_FAILED} / {@code PAYMENT_TIMED_OUT}), which is
+     * only produced <em>after</em> the booking has reached {@code INVENTORY_RESERVED} (ADR-0007).
+     * Classifies the requested transition three ways:
+     * <ul>
+     *   <li><b>Premature</b> — the booking is still in the legitimate earlier {@code PENDING}
+     *       state: the causal predecessor ({@code inventory.reserved}) has not been processed yet,
+     *       so the event arrived out of order. Throws {@link PrematureSagaEventException}
+     *       (<em>retryable</em>) so it is re-tried rather than sent to the DLQ.</li>
+     *   <li><b>Allowed</b> — from {@code INVENTORY_RESERVED} the normal transition applies.</li>
+     *   <li><b>Illegal</b> — from a terminal or otherwise incompatible state; delegates to
+     *       {@link #assertAllowed(BookingStatus, BookingStatus)} which throws
+     *       {@link InvalidStateTransitionException} (non-retryable → DLQ, a genuine anomaly).</li>
+     * </ul>
+     */
+    public static void assertPaymentTransition(BookingStatus from, BookingStatus to) {
+        if (from == BookingStatus.PENDING) {
+            log.warn("Premature payment Saga event: {} → {} before inventory.reserved; deferring (retry)",
+                    from.name(), to.name());
+            throw new PrematureSagaEventException(from, to);
+        }
+        assertAllowed(from, to);
     }
 }

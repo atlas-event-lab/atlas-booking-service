@@ -290,7 +290,7 @@ public class BookingServiceImpl implements BookingService {
 
         Booking booking = findBooking(bookingId);
         BookingStatus from = booking.getStatus();
-        StateTransitionGuard.assertAllowed(from, BookingStatus.CONFIRMED);
+        StateTransitionGuard.assertPaymentTransition(from, BookingStatus.CONFIRMED);
 
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setPaymentId(paymentId);
@@ -312,7 +312,7 @@ public class BookingServiceImpl implements BookingService {
 
         Booking booking = findBooking(bookingId);
         BookingStatus from = booking.getStatus();
-        StateTransitionGuard.assertAllowed(from, BookingStatus.FAILED);
+        StateTransitionGuard.assertPaymentTransition(from, BookingStatus.FAILED);
 
         booking.setStatus(BookingStatus.FAILED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.FAILED));
@@ -332,7 +332,7 @@ public class BookingServiceImpl implements BookingService {
 
         Booking booking = findBooking(bookingId);
         BookingStatus from = booking.getStatus();
-        StateTransitionGuard.assertAllowed(from, BookingStatus.EXPIRED);
+        StateTransitionGuard.assertPaymentTransition(from, BookingStatus.EXPIRED);
 
         booking.setStatus(BookingStatus.EXPIRED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.EXPIRED));
