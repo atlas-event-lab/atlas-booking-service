@@ -115,7 +115,6 @@ public class BookingServiceImpl implements BookingService {
             totalAmount = totalAmount.add(lineTotal);
         }
 
-        totalAmount = totalAmount.setScale(2, RoundingMode.HALF_EVEN);
         Money total = new Money(totalAmount, request.items().getFirst().unitPrice().currency());
 
         validateTotalAmount(request.total().amount(), totalAmount);
