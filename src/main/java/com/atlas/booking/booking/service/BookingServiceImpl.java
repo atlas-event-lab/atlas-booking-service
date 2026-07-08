@@ -69,6 +69,7 @@ public class BookingServiceImpl implements BookingService {
 
     private static final String ACTIVE_STATUS = "ACTIVE";
     private static final String CURRENCY_USD = "USD";
+    private static final int CONVERSION_SCALE = 6;
 
     private final BookingRepository bookingRepository;
     private final ConsumedEventRepository consumedEventRepository;
@@ -115,7 +116,7 @@ public class BookingServiceImpl implements BookingService {
             totalAmount = totalAmount.add(lineTotal);
         }
 
-        Money total = new Money(totalAmount, request.items().getFirst().unitPrice().currency());
+        Money total = new Money(totalAmount, CURRENCY_USD);
 
         validateTotalAmount(request.total().amount(), totalAmount);
 
@@ -470,7 +471,8 @@ public class BookingServiceImpl implements BookingService {
 
         } else {
             BigDecimal rateToUSD = getRateConversionToUSD(item.unitPrice().currency());
-            unitUSDPrice = item.unitPrice().amount().divide(rateToUSD, RoundingMode.HALF_EVEN);
+            unitUSDPrice = item.unitPrice().amount()
+                    .divide(rateToUSD, CONVERSION_SCALE, RoundingMode.HALF_EVEN);
         }
 
         return unitUSDPrice;
