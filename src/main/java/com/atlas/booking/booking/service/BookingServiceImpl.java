@@ -499,6 +499,9 @@ public class BookingServiceImpl implements BookingService {
 
     private void validateTotalAmount(BigDecimal requestTotalAmount, BigDecimal calculatedTotalAmount) {
         if(requestTotalAmount.compareTo(calculatedTotalAmount) != 0) {
+            log.error("Pricing mismatch: requestAmount={}, calculatedAmount={}"
+                ,requestTotalAmount, calculatedTotalAmount);
+
             throw new PricingMismatchException(
                 "Request Total Amount mismatch: "
                     + "ReqTotalAmount="+requestTotalAmount+
