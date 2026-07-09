@@ -41,6 +41,10 @@ public final class BookingTestData {
     public static final BigDecimal FLIGHT_UNIT_PRICE  = new BigDecimal("350.00");
     public static final BigDecimal HOTEL_UNIT_PRICE   = new BigDecimal("150.00");
     public static final String CURRENCY          = "USD";
+    // Deterministic 1-night stay (relative to BookingServiceImplTest's fixed clock 2026-06-17):
+    // hotel subtotal = 150 × 1 night × 1 room = 150, so the total stays 350 + 150 = 500.
+    public static final LocalDate HOTEL_CHECK_IN  = LocalDate.of(2026, 6, 20);
+    public static final LocalDate HOTEL_CHECK_OUT = LocalDate.of(2026, 6, 21);
 
     private BookingTestData() {}
 
@@ -55,13 +59,13 @@ public final class BookingTestData {
     public static BookingItemSelectionRequest aFlightItem() {
         return new BookingItemSelectionRequest(
                 BookingItemType.FLIGHT, FLIGHT_ID, null, 1,
-                new MoneyDto(FLIGHT_UNIT_PRICE, CURRENCY));
+                new MoneyDto(FLIGHT_UNIT_PRICE, CURRENCY), null, null);
     }
 
     public static BookingItemSelectionRequest aHotelItem() {
         return new BookingItemSelectionRequest(
                 BookingItemType.HOTEL, ROOM_TYPE_ID, HOTEL_ID, 1,
-                new MoneyDto(HOTEL_UNIT_PRICE, CURRENCY));
+                new MoneyDto(HOTEL_UNIT_PRICE, CURRENCY), HOTEL_CHECK_IN, HOTEL_CHECK_OUT);
     }
 
     public static CreateBookingRequest aCreateBookingRequest() {

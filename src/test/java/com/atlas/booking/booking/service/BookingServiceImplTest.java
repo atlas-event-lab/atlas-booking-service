@@ -1,5 +1,6 @@
 package com.atlas.booking.booking.service;
 
+import com.atlas.booking.booking.client.ExchangeRateClient;
 import com.atlas.booking.booking.client.FlightPriceClient;
 import com.atlas.booking.booking.client.HotelPriceClient;
 import com.atlas.booking.booking.client.dto.FlightPriceResponse;
@@ -28,13 +29,15 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
@@ -64,12 +67,20 @@ class BookingServiceImplTest {
   OutboxEventWriter outboxEventWriter;
   @Mock
   BookingMapper bookingMapper;
+  @Mock
+  ExchangeRateClient exchangeRateClient;
 
-  @InjectMocks
   BookingServiceImpl bookingService;
 
   @BeforeEach
   void setUpJwt() {
+    // Fixed clock so hotel stay-date validation ("checkIn >= today") is deterministic.
+    Clock clock = Clock.fixed(LocalDate.of(2026, 6, 17).atStartOfDay(ZoneOffset.UTC).toInstant(), ZoneOffset.UTC);
+    bookingService = new BookingServiceImpl(
+        bookingRepository, consumedEventRepository, flightPriceClient, hotelPriceClient,
+        objectMapper, outboxEventWriter, bookingMapper, exchangeRateClient,
+        new HotelBookingProperties(30), clock);
+
     Jwt jwt = Jwt.withTokenValue("token")
         .header("alg", "RS256")
         .claim("sub", BookingTestData.USER_ID.toString())
@@ -217,6 +228,32 @@ class BookingServiceImplTest {
             BookingTestData.IDEMPOTENCY_KEY, BookingTestData.aCreateBookingRequest()))
         .isInstanceOf(CatalogUnavailableException.class)
         .hasMessageContaining("Flight service unavailable");
+
+    verify(bookingRepository, never()).save(any());
+  }
+
+  @Test
+  void createBooking_hotelStayExceedsMaxStay_throws400() throws JsonProcessingException {
+    when(bookingRepository.findByIdempotencyKey(BookingTestData.IDEMPOTENCY_KEY))
+        .thenReturn(Optional.empty());
+    when(objectMapper.writeValueAsBytes(any())).thenReturn("payload".getBytes());
+    when(hotelPriceClient.getRoomTypePrice(BookingTestData.HOTEL_ID, BookingTestData.ROOM_TYPE_ID))
+        .thenReturn(BookingTestData.aRoomTypePriceResponse());
+
+    var longStayHotel = new com.atlas.booking.booking.dto.BookingItemSelectionRequest(
+        com.atlas.booking.booking.entity.BookingItemType.HOTEL,
+        BookingTestData.ROOM_TYPE_ID, BookingTestData.HOTEL_ID, 1,
+        new MoneyDto(BookingTestData.HOTEL_UNIT_PRICE, BookingTestData.CURRENCY),
+        LocalDate.of(2026, 6, 20), LocalDate.of(2026, 8, 1)); // 42 nights > 30
+    var request = new com.atlas.booking.booking.dto.CreateBookingRequest(
+        java.util.List.of(BookingTestData.aTraveler()),
+        java.util.List.of(longStayHotel),
+        new MoneyDto(new java.math.BigDecimal("6300.00"), BookingTestData.CURRENCY));
+
+    assertThatThrownBy(() ->
+        bookingService.createBooking(BookingTestData.IDEMPOTENCY_KEY, request))
+        .isInstanceOf(com.atlas.booking.booking.exception.BookingValidationException.class)
+        .hasMessageContaining("maximum");
 
     verify(bookingRepository, never()).save(any());
   }

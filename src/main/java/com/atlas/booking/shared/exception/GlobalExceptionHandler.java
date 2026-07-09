@@ -51,6 +51,16 @@ public class GlobalExceptionHandler {
         return respond(HttpStatus.BAD_REQUEST, problem);
     }
 
+    @ExceptionHandler(com.atlas.booking.booking.exception.BookingValidationException.class)
+    public ResponseEntity<ProblemDetail> handleBookingValidation(
+            com.atlas.booking.booking.exception.BookingValidationException ex, HttpServletRequest request) {
+
+        ProblemDetail problem = problemOf(HttpStatus.BAD_REQUEST, ex.getMessage(),
+                ProblemTypes.VALIDATION, PROBLEM_TITLE_VALIDATION_ERROR, request);
+
+        return respond(HttpStatus.BAD_REQUEST, problem);
+    }
+
     @ExceptionHandler(MissingRequestHeaderException.class)
     public ResponseEntity<ProblemDetail> handleMissingHeader(
             MissingRequestHeaderException ex, HttpServletRequest request) {

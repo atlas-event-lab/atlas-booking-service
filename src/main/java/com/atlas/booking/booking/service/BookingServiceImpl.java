@@ -15,6 +15,8 @@ import com.atlas.booking.booking.entity.Booking;
 import com.atlas.booking.booking.entity.BookingItem;
 import com.atlas.booking.booking.entity.BookingItemType;
 import com.atlas.booking.booking.entity.BookingStatus;
+import com.atlas.booking.booking.entity.FlightBookingItem;
+import com.atlas.booking.booking.entity.HotelBookingItem;
 import com.atlas.booking.booking.entity.BookingStatusHistory;
 import com.atlas.booking.booking.entity.ConsumedEvent;
 import com.atlas.booking.booking.entity.Money;
@@ -27,6 +29,7 @@ import com.atlas.booking.booking.exception.BookingAccessDeniedException;
 import com.atlas.booking.booking.exception.BookingNotFoundException;
 import com.atlas.booking.booking.exception.BookingNotCancellableException;
 import com.atlas.booking.booking.exception.CatalogUnavailableException;
+import com.atlas.booking.booking.exception.BookingValidationException;
 import com.atlas.booking.booking.exception.CatalogValidationException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
 import com.atlas.booking.booking.exception.PricingMismatchException;
@@ -50,7 +53,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
@@ -79,6 +85,8 @@ public class BookingServiceImpl implements BookingService {
     private final OutboxEventWriter outboxEventWriter;
     private final BookingMapper bookingMapper;
     private final ExchangeRateClient exchangeRateClient;
+    private final HotelBookingProperties hotelBookingProperties;
+    private final Clock clock;
 
 
     // -------------------------------------------------------------------------
@@ -108,12 +116,8 @@ public class BookingServiceImpl implements BookingService {
         BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (BookingItemSelectionRequest item : request.items()) {
-            validateCatalogPrice(item);
-
-            BigDecimal lineTotal = getUSDPrice(item)
-                    .multiply(BigDecimal.valueOf(item.quantity()))
-                    .setScale(2, RoundingMode.HALF_EVEN);
-            totalAmount = totalAmount.add(lineTotal);
+            validateItem(item);
+            totalAmount = totalAmount.add(lineTotalUSD(item));
         }
 
         Money total = new Money(totalAmount, CURRENCY_USD);
@@ -135,20 +139,7 @@ public class BookingServiceImpl implements BookingService {
             incomingHash
         );
 
-       request.items().forEach( item -> {
-            BigDecimal lineTotal = getUSDPrice(item)
-                    .multiply(BigDecimal.valueOf(item.quantity()))
-                    .setScale(2, RoundingMode.HALF_EVEN);
-
-            booking.addItem(new BookingItem(
-                    UUID.randomUUID(),
-                    item.type(),
-                    item.resourceId(),
-                    item.quantity(),
-                    item.unitPrice().amount(),
-                    lineTotal
-            ));
-        });
+       request.items().forEach(item -> booking.addItem(toBookingItem(item)));
 
        request.travelers().forEach( travelerRequest ->
             booking.addTraveler(new Traveler(
@@ -400,6 +391,59 @@ public class BookingServiceImpl implements BookingService {
     // Catalog price validation
     // -------------------------------------------------------------------------
 
+    /** Validates an item's catalog price and, for hotels, its stay range (ADR-0010). */
+    private void validateItem(BookingItemSelectionRequest item) {
+        validateCatalogPrice(item);
+        if (item.type() == BookingItemType.HOTEL) {
+            validateHotelStay(item);
+        }
+    }
+
+    /** Hotel stay-date rules (ADR-0010): dates present, checkOut > checkIn, checkIn ≥ today, nights ≤ maxStay. */
+    private void validateHotelStay(BookingItemSelectionRequest item) {
+        LocalDate checkIn = item.checkIn();
+        LocalDate checkOut = item.checkOut();
+        if (checkIn == null || checkOut == null) {
+            throw new BookingValidationException(
+                    "checkIn and checkOut are required for HOTEL items (roomTypeId=" + item.resourceId() + ")");
+        }
+        if (!checkOut.isAfter(checkIn)) {
+            throw new BookingValidationException(
+                    "checkOut must be after checkIn (checkIn=" + checkIn + ", checkOut=" + checkOut + ")");
+        }
+        if (checkIn.isBefore(LocalDate.now(clock))) {
+            throw new BookingValidationException("checkIn must be today or in the future (checkIn=" + checkIn + ")");
+        }
+        long nights = ChronoUnit.DAYS.between(checkIn, checkOut);
+        if (nights > hotelBookingProperties.maxStayNights()) {
+            throw new BookingValidationException(
+                    "stay length (" + nights + " nights) exceeds the maximum of "
+                            + hotelBookingProperties.maxStayNights());
+        }
+    }
+
+    /** Server-computed line total in USD. Hotel = pricePerNight × nights × rooms; flight = unitPrice × qty. */
+    private BigDecimal lineTotalUSD(BookingItemSelectionRequest item) {
+        long multiplier = (long) item.quantity();
+        if (item.type() == BookingItemType.HOTEL) {
+            multiplier *= ChronoUnit.DAYS.between(item.checkIn(), item.checkOut());
+        }
+        return getUSDPrice(item)
+                .multiply(BigDecimal.valueOf(multiplier))
+                .setScale(2, RoundingMode.HALF_EVEN);
+    }
+
+    /** Builds the polymorphic booking item, storing the (currency-native) unit price and USD subtotal. */
+    private BookingItem toBookingItem(BookingItemSelectionRequest item) {
+        BigDecimal subtotal = lineTotalUSD(item);
+        if (item.type() == BookingItemType.HOTEL) {
+            return new HotelBookingItem(UUID.randomUUID(), item.resourceId(), item.quantity(),
+                    item.unitPrice().amount(), subtotal, item.checkIn(), item.checkOut());
+        }
+        return new FlightBookingItem(UUID.randomUUID(), item.resourceId(), item.quantity(),
+                item.unitPrice().amount(), subtotal);
+    }
+
     private void validateCatalogPrice(BookingItemSelectionRequest item) {
         if (item.type() == BookingItemType.FLIGHT) {
             validateFlightPrice(item);
@@ -516,14 +560,7 @@ public class BookingServiceImpl implements BookingService {
 
     private BookingCreatedPayload buildCreatedPayload(Booking booking) {
         List<BookingItemEvent> items = booking.getItems().stream()
-                .map(item ->
-                    new BookingItemEvent(
-                        item.getType().name(),
-                        item.getResourceId(),
-                        item.getQuantity(),
-                        item.getSubtotal()
-                    )
-                )
+                .map(this::toItemEvent)
                 .toList();
         return new BookingCreatedPayload(
                 booking.getBookingId(),
@@ -531,6 +568,16 @@ public class BookingServiceImpl implements BookingService {
                 items,
                 booking.getTravelers().size(),
                 new MoneyEvent(booking.getTotal().getAmount(), booking.getTotal().getCurrency()));
+    }
+
+    /** Maps a booking item to its event form; hotel items carry the stay range (ADR-0010). */
+    private BookingItemEvent toItemEvent(BookingItem item) {
+        if (item instanceof HotelBookingItem hotel) {
+            return new BookingItemEvent(hotel.type().name(), hotel.getResourceId(), hotel.getQuantity(),
+                    hotel.getSubtotal(), hotel.getCheckIn(), hotel.getCheckOut());
+        }
+        return new BookingItemEvent(item.type().name(), item.getResourceId(), item.getQuantity(),
+                item.getSubtotal(), null, null);
     }
 
     /** Writes a Booking lifecycle event (Confirmed/Failed/Expired) to the outbox (EVT-009). */

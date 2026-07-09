@@ -78,6 +78,9 @@ atlas:
       # settled by Payment's PaymentTimedOut, not by this job.
       pending-timeout: ${BOOKING_EXPIRATION_PENDING_TIMEOUT:30m}
       scan-interval-ms: ${BOOKING_EXPIRATION_SCAN_INTERVAL_MS:60000}
+    hotel:
+      # Max hotel stay length accepted on a booking item (ADR-0010); must match Search's max-stay.
+      max-stay-nights: ${BOOKING_HOTEL_MAX_STAY_NIGHTS:30}
 
 management:
   server:

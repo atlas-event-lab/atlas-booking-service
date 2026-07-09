@@ -1,6 +1,7 @@
 package com.atlas.booking.config;
 
 import com.atlas.booking.booking.scheduler.BookingExpirationProperties;
+import com.atlas.booking.booking.service.HotelBookingProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -8,12 +9,13 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Clock;
 
 /**
- * Wires the Booking expiration job: binds {@link BookingExpirationProperties} and exposes a
- * {@link Clock} bean so the scheduler's deadline check is deterministic and testable
- * (coding-standards §Unit Tests — "Tests SHALL be deterministic. No sleeps").
+ * Wires the Booking expiration job and hotel booking rules: binds
+ * {@link BookingExpirationProperties} / {@link HotelBookingProperties} and exposes a {@link Clock}
+ * bean so deadline / stay-date checks are deterministic and testable (coding-standards §Unit Tests —
+ * "Tests SHALL be deterministic. No sleeps").
  */
 @Configuration
-@EnableConfigurationProperties(BookingExpirationProperties.class)
+@EnableConfigurationProperties({BookingExpirationProperties.class, HotelBookingProperties.class})
 public class BookingExpirationConfig {
 
     @Bean

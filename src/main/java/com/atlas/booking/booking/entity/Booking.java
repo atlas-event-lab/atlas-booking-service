@@ -73,14 +73,14 @@ public class Booking {
     @Column(name = "saga_id", nullable = false, updatable = false)
     private UUID sagaId;
 
-    @Column(name = "idempotency_key", unique = true, length = 255)
+    @Column(name = "idempotency_key", length = 255)
     private String idempotencyKey;
 
     @Column(name = "request_hash", length = 64)
     private String requestHash;
 
     @Setter
-    @Column(name = "cancellation_idempotency_key", unique = true, length = 255)
+    @Column(name = "cancellation_idempotency_key", length = 255)
     private String cancellationIdempotencyKey;
 
     @CreatedDate
