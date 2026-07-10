@@ -1,18 +1,20 @@
 package com.atlas.booking.booking.messaging;
 
 import com.atlas.booking.booking.entity.OutboxEvent;
-import com.atlas.booking.booking.entity.OutboxStatus;
 import com.atlas.booking.booking.repository.OutboxRepository;
 import com.atlas.booking.shared.messaging.EventTopics;
 import com.atlas.booking.shared.messaging.EventType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Phase-1 outbox relay (EVT-009): a scheduled poller that publishes outbox rows to Kafka.
@@ -31,47 +33,74 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OutboxRelay {
 
-    private static final List<OutboxStatus> UNPUBLISHED =
-            List.of(OutboxStatus.PENDING, OutboxStatus.FAILED);
+    /** Max rows claimed per poll — mirrors the {@code LIMIT} in {@code claimBatchForPublishing}. */
+    public static final int BATCH_LIMIT = 100;
 
     private final OutboxRepository outboxRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
 
-    @Scheduled(fixedDelayString = "${atlas.outbox.poll-interval-ms:2000}")
-    public void publishPending() {
-        List<OutboxEvent> batch = outboxRepository.findTop100ByStatusInOrderByCreatedAtAsc(UNPUBLISHED);
+    @Transactional
+    public int publishPending() {
+        // Claim a disjoint batch (FOR UPDATE SKIP LOCKED) so concurrent replicas never publish the
+        // same row; the transaction holds the locks until each row is marked below (ADR-0013).
+        // Scheduling is driven by OutboxRelayScheduler (adaptive interval + drain-in-loop).
+        List<OutboxEvent> batch = outboxRepository.claimBatchForPublishing();
         if (batch.isEmpty()) {
-            return;
+            return 0;
         }
         log.debug("Outbox relay processing {} event(s)", batch.size());
+
+        // Phase 1 — dispatch every send without blocking, so the producer pipelines and batches
+        // them onto the wire (one poll = one batched flush, not N serial broker round-trips).
+        List<Dispatch> dispatched = new ArrayList<>(batch.size());
         for (OutboxEvent event : batch) {
-            publish(event);
+            try {
+                String topic = resolveTopic(event.getEventType());
+                dispatched.add(new Dispatch(event,
+                        kafkaTemplate.send(topic, event.getAggregateId().toString(), event.getPayload())));
+            } catch (Exception e) {
+                // Nothing left the buffer for this row (e.g. topic resolution) — fail it now.
+                event.markFailed();
+                log.error("Failed to dispatch outbox event: id={}, eventType={}, attempts={}",
+                        event.getId(), event.getEventType(), event.getAttempts(), e);
+            }
         }
-    }
-
-    private void publish(OutboxEvent event) {
         try {
-            String topic = resolveTopic(event.getEventType());
-            // Block until the broker acknowledges so the row is only marked PUBLISHED on success.
-            kafkaTemplate.send(topic, event.getAggregateId().toString(), event.getPayload()).get();
-
-            event.markPublished(Instant.now());
-            outboxRepository.save(event);
-            log.info("Outbox event published: id={}, eventType={}, aggregateId={}",
-                    event.getId(), event.getEventType(), event.getAggregateId());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            markFailed(event, e);
+            kafkaTemplate.flush();
         } catch (Exception e) {
-            markFailed(event, e);
+            // The per-send futures below still report each row's outcome; don't fail the whole tx.
+            log.warn("Outbox relay flush failed; awaiting individual sends", e);
         }
+
+        // Phase 2 — await each broker ack and mark the row by its own outcome. Delivery stays
+        // at-least-once (consumers dedupe on eventId); a crash before save re-publishes next poll.
+        Instant now = Instant.now();
+        for (Dispatch dispatch : dispatched) {
+            OutboxEvent event = dispatch.event();
+            try {
+                dispatch.future().get();
+                event.markPublished(now);
+                log.debug("Outbox event published: id={}, eventType={}, aggregateId={}",
+                        event.getId(), event.getEventType(), event.getAggregateId());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                event.markFailed();
+                log.error("Interrupted publishing outbox event: id={}, eventType={}, attempts={}",
+                        event.getId(), event.getEventType(), event.getAttempts(), e);
+            } catch (Exception e) {
+                event.markFailed();
+                log.error("Failed to publish outbox event: id={}, eventType={}, attempts={}",
+                        event.getId(), event.getEventType(), event.getAttempts(), e);
+            }
+        }
+
+        // Single write-back for the whole batch instead of a save per row.
+        outboxRepository.saveAll(batch);
+        return batch.size();
     }
 
-    private void markFailed(OutboxEvent event, Exception e) {
-        event.markFailed();
-        outboxRepository.save(event);
-        log.error("Failed to publish outbox event: id={}, eventType={}, attempts={}",
-                event.getId(), event.getEventType(), event.getAttempts(), e);
+    /** One dispatched send awaiting its broker acknowledgement. */
+    private record Dispatch(OutboxEvent event, CompletableFuture<SendResult<String, String>> future) {
     }
 
     /** Maps an event type to its owning Booking topic (topics.md). */

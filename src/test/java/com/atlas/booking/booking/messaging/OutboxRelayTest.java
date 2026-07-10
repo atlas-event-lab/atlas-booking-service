@@ -1,7 +1,6 @@
 package com.atlas.booking.booking.messaging;
 
 import com.atlas.booking.booking.entity.OutboxEvent;
-import com.atlas.booking.booking.entity.OutboxStatus;
 import com.atlas.booking.booking.repository.OutboxRepository;
 import com.atlas.booking.shared.messaging.EventTopics;
 import com.atlas.booking.shared.messaging.EventType;
@@ -34,9 +33,7 @@ class OutboxRelayTest {
                 UUID.randomUUID(), "Booking", bookingId, EventType.BOOKING_CANCELLED, 1,
                 "{\"eventType\":\"BookingCancelled\",\"payload\":{\"bookingId\":\"" + bookingId + "\"}}");
 
-        when(outboxRepository.findTop100ByStatusInOrderByCreatedAtAsc(
-                List.of(OutboxStatus.PENDING, OutboxStatus.FAILED)))
-                .thenReturn(List.of(event));
+        when(outboxRepository.claimBatchForPublishing()).thenReturn(List.of(event));
         when(kafkaTemplate.send(anyString(), anyString(), any()))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
