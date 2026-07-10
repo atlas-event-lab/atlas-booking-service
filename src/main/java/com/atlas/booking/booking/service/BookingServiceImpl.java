@@ -1,6 +1,6 @@
 package com.atlas.booking.booking.service;
 
-import com.atlas.booking.booking.client.ExchangeRateClient;
+import com.atlas.booking.booking.client.ExchangeRateService;
 import com.atlas.booking.booking.client.FlightPriceClient;
 import com.atlas.booking.booking.client.HotelPriceClient;
 import com.atlas.booking.booking.client.dto.ExchangeRateDto;
@@ -84,7 +84,7 @@ public class BookingServiceImpl implements BookingService {
     private final ObjectMapper objectMapper;
     private final OutboxEventWriter outboxEventWriter;
     private final BookingMapper bookingMapper;
-    private final ExchangeRateClient exchangeRateClient;
+    private final ExchangeRateService exchangeRateService;
     private final HotelBookingProperties hotelBookingProperties;
     private final Clock clock;
 
@@ -139,9 +139,11 @@ public class BookingServiceImpl implements BookingService {
             incomingHash
         );
 
-       request.items().forEach(item -> booking.addItem(toBookingItem(item)));
 
-       request.travelers().forEach( travelerRequest ->
+        request.items().forEach(item -> booking.addItem(toBookingItem(item)));
+
+
+        request.travelers().forEach( travelerRequest ->
             booking.addTraveler(new Traveler(
                     UUID.randomUUID(),
                     travelerRequest.firstName(),
@@ -424,11 +426,11 @@ public class BookingServiceImpl implements BookingService {
 
     /** Server-computed line total in USD. Hotel = pricePerNight × nights × rooms; flight = unitPrice × qty. */
     private BigDecimal lineTotalUSD(BookingItemSelectionRequest item) {
-        long multiplier = (long) item.quantity();
+        long multiplier = item.quantity();
         if (item.type() == BookingItemType.HOTEL) {
             multiplier *= ChronoUnit.DAYS.between(item.checkIn(), item.checkOut());
         }
-        return getUSDPrice(item)
+        return getUnitPriceInUSD(item)
                 .multiply(BigDecimal.valueOf(multiplier))
                 .setScale(2, RoundingMode.HALF_EVEN);
     }
@@ -438,10 +440,10 @@ public class BookingServiceImpl implements BookingService {
         BigDecimal subtotal = lineTotalUSD(item);
         if (item.type() == BookingItemType.HOTEL) {
             return new HotelBookingItem(UUID.randomUUID(), item.resourceId(), item.quantity(),
-                    item.unitPrice().amount(), subtotal, item.checkIn(), item.checkOut());
+                getUnitPriceInUSD(item), subtotal, item.checkIn(), item.checkOut());
         }
         return new FlightBookingItem(UUID.randomUUID(), item.resourceId(), item.quantity(),
-                item.unitPrice().amount(), subtotal);
+            getUnitPriceInUSD(item), subtotal);
     }
 
     private void validateCatalogPrice(BookingItemSelectionRequest item) {
@@ -508,7 +510,7 @@ public class BookingServiceImpl implements BookingService {
                 && clientPrice.currency().equals(catalogPrice.currency());
     }
 
-    private BigDecimal getUSDPrice(BookingItemSelectionRequest item) {
+    private BigDecimal getUnitPriceInUSD(BookingItemSelectionRequest item) {
         BigDecimal unitUSDPrice;
         if (item.unitPrice().currency().equals(CURRENCY_USD)) {
             unitUSDPrice = item.unitPrice().amount();
@@ -527,7 +529,7 @@ public class BookingServiceImpl implements BookingService {
         List<ExchangeRateDto> exchangeRates;
 
         try {
-          exchangeRates = exchangeRateClient.getUSDExchangeRates();
+          exchangeRates = exchangeRateService.getUSDExchangeRates();
         } catch (FeignException e) {
             throw new PricingMismatchException(
                 "Exchange Rate API unavailable for Currency=" + currency + ".Details: "+ e.getMessage());

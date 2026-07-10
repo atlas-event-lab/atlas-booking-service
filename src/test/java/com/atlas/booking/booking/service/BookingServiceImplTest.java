@@ -1,6 +1,6 @@
 package com.atlas.booking.booking.service;
 
-import com.atlas.booking.booking.client.ExchangeRateClient;
+import com.atlas.booking.booking.client.ExchangeRateService;
 import com.atlas.booking.booking.client.FlightPriceClient;
 import com.atlas.booking.booking.client.HotelPriceClient;
 import com.atlas.booking.booking.client.dto.FlightPriceResponse;
@@ -68,7 +68,7 @@ class BookingServiceImplTest {
   @Mock
   BookingMapper bookingMapper;
   @Mock
-  ExchangeRateClient exchangeRateClient;
+  ExchangeRateService exchangeRateService;
 
   BookingServiceImpl bookingService;
 
@@ -78,7 +78,7 @@ class BookingServiceImplTest {
     Clock clock = Clock.fixed(LocalDate.of(2026, 6, 17).atStartOfDay(ZoneOffset.UTC).toInstant(), ZoneOffset.UTC);
     bookingService = new BookingServiceImpl(
         bookingRepository, consumedEventRepository, flightPriceClient, hotelPriceClient,
-        objectMapper, outboxEventWriter, bookingMapper, exchangeRateClient,
+        objectMapper, outboxEventWriter, bookingMapper, exchangeRateService,
         new HotelBookingProperties(30), clock);
 
     Jwt jwt = Jwt.withTokenValue("token")
