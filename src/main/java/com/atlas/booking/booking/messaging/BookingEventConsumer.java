@@ -57,7 +57,8 @@ public class BookingEventConsumer {
     @RetryableTopic(
             attempts = "4",
             backoff = @Backoff(delay = 5_000L, multiplier = 6.0, maxDelay = 120_000L),
-            dltTopicSuffix = ".dlq",
+            retryTopicSuffix = "-booking-retry",
+            dltTopicSuffix = "-booking.dlq",
             dltStrategy = DltStrategy.FAIL_ON_ERROR,
             autoStartDltHandler = "false",
             exclude = {BookingNotFoundException.class, InvalidStateTransitionException.class,
