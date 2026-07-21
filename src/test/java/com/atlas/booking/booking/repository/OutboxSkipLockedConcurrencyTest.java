@@ -1,7 +1,18 @@
 package com.atlas.booking.booking.repository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.atlas.booking.booking.entity.OutboxEvent;
 import com.atlas.booking.shared.messaging.EventType;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -18,18 +29,6 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Verifies the core guarantee of ADR-0013: the {@code FOR UPDATE SKIP LOCKED} claim query hands
  * two concurrent relay instances <em>disjoint</em> batches, so no outbox row is ever published
@@ -42,10 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@TestPropertySource(properties = {
-        "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.flyway.enabled=false"
-})
+@TestPropertySource(properties = {"spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false"})
 @Import(OutboxSkipLockedConcurrencyTest.AuditingConfig.class)
 @Testcontainers
 class OutboxSkipLockedConcurrencyTest {
@@ -62,8 +58,7 @@ class OutboxSkipLockedConcurrencyTest {
 
     /** {@code @CreatedDate} needs auditing active for the slice to populate {@code created_at}. */
     @EnableJpaAuditing
-    static class AuditingConfig {
-    }
+    static class AuditingConfig {}
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED) // each thread manages its own tx
@@ -75,8 +70,12 @@ class OutboxSkipLockedConcurrencyTest {
             List<OutboxEvent> seed = new ArrayList<>();
             for (int i = 0; i < 200; i++) {
                 UUID bookingId = UUID.randomUUID();
-                seed.add(new OutboxEvent(UUID.randomUUID(), "Booking", bookingId,
-                        EventType.BOOKING_CREATED, 1,
+                seed.add(new OutboxEvent(
+                        UUID.randomUUID(),
+                        "Booking",
+                        bookingId,
+                        EventType.BOOKING_CREATED,
+                        1,
                         "{\"eventType\":\"BookingCreated\",\"payload\":{\"bookingId\":\"" + bookingId + "\"}}"));
             }
             outboxRepository.saveAll(seed);
@@ -88,7 +87,8 @@ class OutboxSkipLockedConcurrencyTest {
         CyclicBarrier bothClaimed = new CyclicBarrier(2);
         Callable<List<UUID>> claimTask = () -> tx.execute(status -> {
             List<UUID> ids = outboxRepository.claimBatchForPublishing().stream()
-                    .map(OutboxEvent::getId).toList();
+                    .map(OutboxEvent::getId)
+                    .toList();
             try {
                 bothClaimed.await(10, TimeUnit.SECONDS);
             } catch (Exception e) {

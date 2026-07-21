@@ -7,12 +7,11 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.UUID;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-
-import java.io.IOException;
-import java.util.UUID;
 
 /**
  * Seeds a business {@code correlationId} as OpenTelemetry baggage for every request (OBS-001, OBS-002).
@@ -36,6 +35,7 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
      * GlobalExceptionHandler); this filter does not write them directly.
      */
     public static final String MDC_CORRELATION_ID = "correlationId";
+
     public static final String TRACE_ID_MDC_KEY = "traceId";
 
     private final Tracer tracer;
@@ -46,9 +46,8 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(
-            @NonNull HttpServletRequest request,
-            @NonNull HttpServletResponse response,
-            @NonNull FilterChain chain) throws ServletException, IOException {
+            @NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain chain)
+            throws ServletException, IOException {
 
         String correlationId = resolveCorrelationId(request);
         response.setHeader(CORRELATION_ID_HEADER, correlationId);
@@ -68,6 +67,8 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
             }
         }
         String header = request.getHeader(CORRELATION_ID_HEADER);
-        return (header != null && !header.isBlank()) ? header : UUID.randomUUID().toString();
+        return (header != null && !header.isBlank())
+                ? header
+                : UUID.randomUUID().toString();
     }
 }

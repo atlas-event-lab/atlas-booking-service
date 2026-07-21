@@ -1,18 +1,17 @@
 package com.atlas.booking.booking.messaging;
 
 import com.atlas.booking.booking.entity.OutboxEvent;
-import com.atlas.booking.booking.repository.OutboxRepository;
 import com.atlas.booking.booking.event.EventEnvelope;
+import com.atlas.booking.booking.repository.OutboxRepository;
 import com.atlas.booking.shared.messaging.EventType;
 import com.atlas.booking.shared.web.CorrelationIdFilter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
-
-import java.time.Instant;
-import java.util.UUID;
 
 /**
  * Writes domain events to the Transactional Outbox (EVT-009).
@@ -43,8 +42,7 @@ public class OutboxEventWriter {
      * @param sagaId        saga instance id (OBS-003)
      * @param payload       the business payload (never null, never carries metadata)
      */
-    public <T> void write(UUID aggregateId, EventType eventType,
-                      String correlationId, String sagaId, T payload) {
+    public <T> void write(UUID aggregateId, EventType eventType, String correlationId, String sagaId, T payload) {
         EventEnvelope<T> envelope = new EventEnvelope<>(
                 UUID.randomUUID(),
                 eventType.name(),
@@ -56,15 +54,8 @@ public class OutboxEventWriter {
                 PRODUCER,
                 payload);
 
-        outboxRepository.save(
-            new OutboxEvent(
-                UUID.randomUUID(),
-                AGGREGATE_TYPE,
-                aggregateId,
-                eventType,
-                EVENT_VERSION,
-                serialize(envelope))
-        );
+        outboxRepository.save(new OutboxEvent(
+                UUID.randomUUID(), AGGREGATE_TYPE, aggregateId, eventType, EVENT_VERSION, serialize(envelope)));
     }
 
     private String serialize(EventEnvelope<?> envelope) {
@@ -79,6 +70,8 @@ public class OutboxEventWriter {
     /** Reads traceId from MDC (set by {@link CorrelationIdFilter}), falls back to a new UUID. */
     private String resolveTraceId() {
         String traceId = MDC.get(CorrelationIdFilter.TRACE_ID_MDC_KEY);
-        return (traceId != null && !traceId.isBlank()) ? traceId : UUID.randomUUID().toString();
+        return (traceId != null && !traceId.isBlank())
+                ? traceId
+                : UUID.randomUUID().toString();
     }
 }

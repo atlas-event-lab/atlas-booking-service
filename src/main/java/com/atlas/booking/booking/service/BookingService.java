@@ -3,7 +3,6 @@ package com.atlas.booking.booking.service;
 import com.atlas.booking.booking.dto.BookingResponse;
 import com.atlas.booking.booking.dto.CancelBookingRequest;
 import com.atlas.booking.booking.dto.CreateBookingRequest;
-
 import java.util.UUID;
 
 /**

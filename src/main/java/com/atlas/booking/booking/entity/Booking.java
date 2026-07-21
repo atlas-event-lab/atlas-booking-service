@@ -13,6 +13,11 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -22,12 +27,6 @@ import lombok.ToString;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
 
 /**
  * Aggregate Root for the Booking domain.
@@ -62,8 +61,10 @@ public class Booking {
 
     @Embedded
     @AttributeOverrides({
-            @AttributeOverride(name = "amount",   column = @Column(name = "total_amount", nullable = false, precision = 19, scale = 2)),
-            @AttributeOverride(name = "currency", column = @Column(name = "currency",     nullable = false, length = 3))
+        @AttributeOverride(
+                name = "amount",
+                column = @Column(name = "total_amount", nullable = false, precision = 19, scale = 2)),
+        @AttributeOverride(name = "currency", column = @Column(name = "currency", nullable = false, length = 3))
     })
     private Money total;
 
@@ -108,9 +109,15 @@ public class Booking {
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<BookingStatusHistory> statusHistory = new ArrayList<>();
 
-    public Booking(UUID bookingId, UUID userId, BookingStatus status,
-                   Money total, String correlationId, UUID sagaId,
-                   String idempotencyKey, String requestHash) {
+    public Booking(
+            UUID bookingId,
+            UUID userId,
+            BookingStatus status,
+            Money total,
+            String correlationId,
+            UUID sagaId,
+            String idempotencyKey,
+            String requestHash) {
         this.bookingId = bookingId;
         this.userId = userId;
         this.status = status;
@@ -136,7 +143,15 @@ public class Booking {
         entry.setBooking(this);
     }
 
-    public List<BookingItem> getItems()                  { return Collections.unmodifiableList(items); }
-    public List<Traveler> getTravelers()                 { return Collections.unmodifiableList(travelers); }
-    public List<BookingStatusHistory> getStatusHistory() { return Collections.unmodifiableList(statusHistory); }
+    public List<BookingItem> getItems() {
+        return Collections.unmodifiableList(items);
+    }
+
+    public List<Traveler> getTravelers() {
+        return Collections.unmodifiableList(travelers);
+    }
+
+    public List<BookingStatusHistory> getStatusHistory() {
+        return Collections.unmodifiableList(statusHistory);
+    }
 }

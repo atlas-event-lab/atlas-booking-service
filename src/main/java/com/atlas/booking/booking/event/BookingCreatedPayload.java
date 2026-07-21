@@ -10,9 +10,4 @@ import java.util.UUID;
  * by Booking Service and must not travel in events (data minimisation, booking-events.yaml).
  */
 public record BookingCreatedPayload(
-        UUID bookingId,
-        UUID userId,
-        List<BookingItemEvent> items,
-        Integer travelers,
-        MoneyEvent total
-) {}
+        UUID bookingId, UUID userId, List<BookingItemEvent> items, Integer travelers, MoneyEvent total) {}

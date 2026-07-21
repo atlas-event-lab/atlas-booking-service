@@ -15,10 +15,10 @@ import com.atlas.booking.booking.entity.Booking;
 import com.atlas.booking.booking.entity.BookingItem;
 import com.atlas.booking.booking.entity.BookingItemType;
 import com.atlas.booking.booking.entity.BookingStatus;
-import com.atlas.booking.booking.entity.FlightBookingItem;
-import com.atlas.booking.booking.entity.HotelBookingItem;
 import com.atlas.booking.booking.entity.BookingStatusHistory;
 import com.atlas.booking.booking.entity.ConsumedEvent;
+import com.atlas.booking.booking.entity.FlightBookingItem;
+import com.atlas.booking.booking.entity.HotelBookingItem;
 import com.atlas.booking.booking.entity.Money;
 import com.atlas.booking.booking.entity.Traveler;
 import com.atlas.booking.booking.event.BookingCreatedPayload;
@@ -26,10 +26,10 @@ import com.atlas.booking.booking.event.BookingItemEvent;
 import com.atlas.booking.booking.event.BookingLifecyclePayload;
 import com.atlas.booking.booking.event.MoneyEvent;
 import com.atlas.booking.booking.exception.BookingAccessDeniedException;
-import com.atlas.booking.booking.exception.BookingNotFoundException;
 import com.atlas.booking.booking.exception.BookingNotCancellableException;
-import com.atlas.booking.booking.exception.CatalogUnavailableException;
+import com.atlas.booking.booking.exception.BookingNotFoundException;
 import com.atlas.booking.booking.exception.BookingValidationException;
+import com.atlas.booking.booking.exception.CatalogUnavailableException;
 import com.atlas.booking.booking.exception.CatalogValidationException;
 import com.atlas.booking.booking.exception.IdempotencyConflictException;
 import com.atlas.booking.booking.exception.PricingMismatchException;
@@ -37,18 +37,11 @@ import com.atlas.booking.booking.mapper.BookingMapper;
 import com.atlas.booking.booking.messaging.OutboxEventWriter;
 import com.atlas.booking.booking.repository.BookingRepository;
 import com.atlas.booking.booking.repository.ConsumedEventRepository;
-import com.atlas.booking.shared.messaging.EventType;
 import com.atlas.booking.shared.messaging.ConsumerEventType;
+import com.atlas.booking.shared.messaging.EventType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import feign.FeignException;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.security.MessageDigest;
@@ -60,6 +53,12 @@ import java.time.temporal.ChronoUnit;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Booking Service implementation.
@@ -88,7 +87,6 @@ public class BookingServiceImpl implements BookingService {
     private final HotelBookingProperties hotelBookingProperties;
     private final Clock clock;
 
-
     // -------------------------------------------------------------------------
     // REST handlers
     // -------------------------------------------------------------------------
@@ -105,14 +103,15 @@ public class BookingServiceImpl implements BookingService {
             if (!incomingHash.equals(existingBooking.getRequestHash())) {
                 throw new IdempotencyConflictException(idempotencyKey);
             }
-            log.info("Idempotent replay: bookingId={}, idempotencyKey={}",
-                    existingBooking.getBookingId(), idempotencyKey);
+            log.info(
+                    "Idempotent replay: bookingId={}, idempotencyKey={}",
+                    existingBooking.getBookingId(),
+                    idempotencyKey);
             return new BookingCreationResult(bookingMapper.toResponse(existingBooking), true);
         }
 
         UUID userId = extractUserId();
 
-        // Validate each item against its catalog service and compute total server-side
         BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (BookingItemSelectionRequest item : request.items()) {
@@ -124,52 +123,44 @@ public class BookingServiceImpl implements BookingService {
 
         validateTotalAmount(request.total().amount(), totalAmount);
 
-        UUID bookingId    = UUID.randomUUID();
-        UUID sagaId       = UUID.randomUUID();
+        UUID bookingId = UUID.randomUUID();
+        UUID sagaId = UUID.randomUUID();
         String correlationId = UUID.randomUUID().toString();
 
         Booking booking = new Booking(
-            bookingId,
-            userId,
-            BookingStatus.PENDING,
-            total,
-            correlationId,
-            sagaId,
-            idempotencyKey,
-            incomingHash
-        );
-
+                bookingId, userId, BookingStatus.PENDING, total, correlationId, sagaId, idempotencyKey, incomingHash);
 
         request.items().forEach(item -> booking.addItem(toBookingItem(item)));
 
-
-        request.travelers().forEach( travelerRequest ->
-            booking.addTraveler(new Traveler(
-                    UUID.randomUUID(),
-                    travelerRequest.firstName(),
-                    travelerRequest.lastName(),
-                    travelerRequest.dateOfBirth(),
-                    travelerRequest.nationality(),
-                    travelerRequest.documentType(),
-                    travelerRequest.documentNumber(),
-                    travelerRequest.email(),
-                    travelerRequest.phoneNumber()))
-       );
+        request.travelers()
+                .forEach(travelerRequest -> booking.addTraveler(new Traveler(
+                        UUID.randomUUID(),
+                        travelerRequest.firstName(),
+                        travelerRequest.lastName(),
+                        travelerRequest.dateOfBirth(),
+                        travelerRequest.nationality(),
+                        travelerRequest.documentType(),
+                        travelerRequest.documentNumber(),
+                        travelerRequest.email(),
+                        travelerRequest.phoneNumber())));
 
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), null, BookingStatus.PENDING));
 
         Booking saved = bookingRepository.save(booking);
 
-        // Write BookingCreated to the outbox in this same transaction (EVT-009).
         outboxEventWriter.write(
-            saved.getBookingId(),
-            EventType.BOOKING_CREATED,
-            saved.getCorrelationId(),
-            saved.getSagaId().toString(),
-            buildCreatedPayload(saved));
+                saved.getBookingId(),
+                EventType.BOOKING_CREATED,
+                saved.getCorrelationId(),
+                saved.getSagaId().toString(),
+                buildCreatedPayload(saved));
 
-        log.info("Booking created: bookingId={}, userId={}, sagaId={}, correlationId={}",
-                bookingId, userId, sagaId, correlationId);
+        log.info(
+                "Booking created: bookingId={}, userId={}, sagaId={}, correlationId={}",
+                bookingId,
+                userId,
+                sagaId,
+                correlationId);
 
         return new BookingCreationResult(bookingMapper.toResponse(saved), false);
     }
@@ -178,8 +169,7 @@ public class BookingServiceImpl implements BookingService {
     @Transactional(readOnly = true)
     public BookingResponse getBooking(UUID bookingId) {
         return bookingMapper.toResponse(
-                bookingRepository.findById(bookingId)
-                        .orElseThrow(() -> new BookingNotFoundException(bookingId)));
+                bookingRepository.findById(bookingId).orElseThrow(() -> new BookingNotFoundException(bookingId)));
     }
 
     // -------------------------------------------------------------------------
@@ -189,7 +179,6 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public BookingResponse cancelBooking(String idempotencyKey, UUID bookingId, CancelBookingRequest request) {
-        // Idempotency check (EVT-008)
         var existing = bookingRepository.findByCancellationIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
             Booking existingBooking = existing.get();
@@ -203,7 +192,6 @@ public class BookingServiceImpl implements BookingService {
         UUID userId = extractUserId();
         Booking booking = findBooking(bookingId);
 
-        // Ownership check (SEC-004)
         if (!booking.getUserId().equals(userId)) {
             throw new BookingAccessDeniedException(bookingId);
         }
@@ -218,15 +206,15 @@ public class BookingServiceImpl implements BookingService {
         booking.setCancellationIdempotencyKey(idempotencyKey);
 
         String reason = (request != null) ? request.reason() : null;
-        booking.addStatusHistory(
-                new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.CANCELLING, reason));
+        booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.CANCELLING, reason));
 
-        // Write BookingCancelled to the outbox in this same transaction (EVT-009).
-        // The terminal CANCELLED transition (and cancelledAt) is applied later on InventoryReleased.
         publishLifecycle(booking, EventType.BOOKING_CANCELLED);
 
-        log.info("Booking cancellation initiated: bookingId={}, userId={}, from={}, to=CANCELLING",
-                bookingId, userId, from);
+        log.info(
+                "Booking cancellation initiated: bookingId={}, userId={}, from={}, to=CANCELLING",
+                bookingId,
+                userId,
+                from);
 
         return bookingMapper.toResponse(booking);
     }
@@ -347,7 +335,6 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = findBooking(bookingId);
         BookingStatus from = booking.getStatus();
 
-        // A Booking already CANCELLED (pre-confirmation path) is a no-op (EVT-005).
         if (from == BookingStatus.CANCELLED) {
             log.info("InventoryReleased on already-CANCELLED booking, no-op: bookingId={}", bookingId);
             consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.INVENTORY_RELEASED));
@@ -375,8 +362,7 @@ public class BookingServiceImpl implements BookingService {
         BookingStatus from = booking.getStatus();
 
         if (from != BookingStatus.PENDING) {
-            log.info("Skipping expiration, booking not PENDING: bookingId={}, status={}",
-                    bookingId, from);
+            log.info("Skipping expiration, booking not PENDING: bookingId={}, status={}", bookingId, from);
             return;
         }
 
@@ -418,9 +404,8 @@ public class BookingServiceImpl implements BookingService {
         }
         long nights = ChronoUnit.DAYS.between(checkIn, checkOut);
         if (nights > hotelBookingProperties.maxStayNights()) {
-            throw new BookingValidationException(
-                    "stay length (" + nights + " nights) exceeds the maximum of "
-                            + hotelBookingProperties.maxStayNights());
+            throw new BookingValidationException("stay length (" + nights + " nights) exceeds the maximum of "
+                    + hotelBookingProperties.maxStayNights());
         }
     }
 
@@ -430,20 +415,24 @@ public class BookingServiceImpl implements BookingService {
         if (item.type() == BookingItemType.HOTEL) {
             multiplier *= ChronoUnit.DAYS.between(item.checkIn(), item.checkOut());
         }
-        return getUnitPriceInUSD(item)
-                .multiply(BigDecimal.valueOf(multiplier))
-                .setScale(2, RoundingMode.HALF_EVEN);
+        return getUnitPriceInUSD(item).multiply(BigDecimal.valueOf(multiplier)).setScale(2, RoundingMode.HALF_EVEN);
     }
 
     /** Builds the polymorphic booking item, storing the (currency-native) unit price and USD subtotal. */
     private BookingItem toBookingItem(BookingItemSelectionRequest item) {
         BigDecimal subtotal = lineTotalUSD(item);
         if (item.type() == BookingItemType.HOTEL) {
-            return new HotelBookingItem(UUID.randomUUID(), item.resourceId(), item.quantity(),
-                getUnitPriceInUSD(item), subtotal, item.checkIn(), item.checkOut());
+            return new HotelBookingItem(
+                    UUID.randomUUID(),
+                    item.resourceId(),
+                    item.quantity(),
+                    getUnitPriceInUSD(item),
+                    subtotal,
+                    item.checkIn(),
+                    item.checkOut());
         }
-        return new FlightBookingItem(UUID.randomUUID(), item.resourceId(), item.quantity(),
-            getUnitPriceInUSD(item), subtotal);
+        return new FlightBookingItem(
+                UUID.randomUUID(), item.resourceId(), item.quantity(), getUnitPriceInUSD(item), subtotal);
     }
 
     private void validateCatalogPrice(BookingItemSelectionRequest item) {
@@ -459,8 +448,7 @@ public class BookingServiceImpl implements BookingService {
         try {
             flightPrice = flightPriceClient.getFlightPrice(item.resourceId());
         } catch (FeignException e) {
-            throw new CatalogUnavailableException(
-                    "Flight service unavailable for flightId=" + item.resourceId(), e);
+            throw new CatalogUnavailableException("Flight service unavailable for flightId=" + item.resourceId(), e);
         }
 
         if (!ACTIVE_STATUS.equals(flightPrice.status())) {
@@ -469,10 +457,11 @@ public class BookingServiceImpl implements BookingService {
         }
 
         if (!pricesMatch(item.unitPrice(), flightPrice.basePrice())) {
-            throw new CatalogValidationException(
-                    "Price mismatch for flight " + item.resourceId()
-                    + ": client=" + item.unitPrice().amount() + " " + item.unitPrice().currency()
-                    + ", catalog=" + flightPrice.basePrice().amount() + " " + flightPrice.basePrice().currency());
+            throw new CatalogValidationException("Price mismatch for flight " + item.resourceId()
+                    + ": client=" + item.unitPrice().amount() + " "
+                    + item.unitPrice().currency()
+                    + ", catalog=" + flightPrice.basePrice().amount() + " "
+                    + flightPrice.basePrice().currency());
         }
     }
 
@@ -487,21 +476,20 @@ public class BookingServiceImpl implements BookingService {
             roomPrice = hotelPriceClient.getRoomTypePrice(item.hotelId(), item.resourceId());
         } catch (FeignException e) {
             throw new CatalogUnavailableException(
-                    "Hotel service unavailable for hotelId=" + item.hotelId()
-                    + ", roomTypeId=" + item.resourceId(), e);
+                    "Hotel service unavailable for hotelId=" + item.hotelId() + ", roomTypeId=" + item.resourceId(), e);
         }
 
         if (!ACTIVE_STATUS.equals(roomPrice.status())) {
-            throw new CatalogValidationException(
-                    "Room type " + item.resourceId() + " in hotel " + item.hotelId()
+            throw new CatalogValidationException("Room type " + item.resourceId() + " in hotel " + item.hotelId()
                     + " is not ACTIVE (status=" + roomPrice.status() + ")");
         }
 
         if (!pricesMatch(item.unitPrice(), roomPrice.pricePerNight())) {
-            throw new CatalogValidationException(
-                    "Price mismatch for room type " + item.resourceId()
-                    + ": client=" + item.unitPrice().amount() + " " + item.unitPrice().currency()
-                    + ", catalog=" + roomPrice.pricePerNight().amount() + " " + roomPrice.pricePerNight().currency());
+            throw new CatalogValidationException("Price mismatch for room type " + item.resourceId()
+                    + ": client=" + item.unitPrice().amount() + " "
+                    + item.unitPrice().currency()
+                    + ", catalog=" + roomPrice.pricePerNight().amount() + " "
+                    + roomPrice.pricePerNight().currency());
         }
     }
 
@@ -517,8 +505,7 @@ public class BookingServiceImpl implements BookingService {
 
         } else {
             BigDecimal rateToUSD = getRateConversionToUSD(item.unitPrice().currency());
-            unitUSDPrice = item.unitPrice().amount()
-                    .divide(rateToUSD, CONVERSION_SCALE, RoundingMode.HALF_EVEN);
+            unitUSDPrice = item.unitPrice().amount().divide(rateToUSD, CONVERSION_SCALE, RoundingMode.HALF_EVEN);
         }
 
         return unitUSDPrice;
@@ -529,30 +516,29 @@ public class BookingServiceImpl implements BookingService {
         List<ExchangeRateDto> exchangeRates;
 
         try {
-          exchangeRates = exchangeRateService.getUSDExchangeRates();
+            exchangeRates = exchangeRateService.getUSDExchangeRates();
         } catch (FeignException e) {
             throw new PricingMismatchException(
-                "Exchange Rate API unavailable for Currency=" + currency + ".Details: "+ e.getMessage());
+                    "Exchange Rate API unavailable for Currency=" + currency + ".Details: " + e.getMessage());
         }
         return exchangeRates.stream()
-            .filter(exchange ->
-                exchange.quote().equals(currency)
-            ).map(ExchangeRateDto::rate)
-            .findFirst()
-            .orElseThrow(() ->
-                new PricingMismatchException(
-                    "Currency "+ currency +" is not available in exchange rate catalog"));
+                .filter(exchange -> exchange.quote().equals(currency))
+                .map(ExchangeRateDto::rate)
+                .findFirst()
+                .orElseThrow(() -> new PricingMismatchException(
+                        "Currency " + currency + " is not available in exchange rate catalog"));
     }
 
     private void validateTotalAmount(BigDecimal requestTotalAmount, BigDecimal calculatedTotalAmount) {
-        if(requestTotalAmount.compareTo(calculatedTotalAmount) != 0) {
-            log.error("Pricing mismatch: requestAmount={}, calculatedAmount={}"
-                ,requestTotalAmount, calculatedTotalAmount);
+        if (requestTotalAmount.compareTo(calculatedTotalAmount) != 0) {
+            log.error(
+                    "Pricing mismatch: requestAmount={}, calculatedAmount={}",
+                    requestTotalAmount,
+                    calculatedTotalAmount);
 
-            throw new PricingMismatchException(
-                "Request Total Amount mismatch: "
-                    + "ReqTotalAmount="+requestTotalAmount+
-                    ", CalculatedTotalAmount="+calculatedTotalAmount);
+            throw new PricingMismatchException("Request Total Amount mismatch: "
+                    + "ReqTotalAmount=" + requestTotalAmount + ", CalculatedTotalAmount="
+                    + calculatedTotalAmount);
         }
     }
 
@@ -561,39 +547,42 @@ public class BookingServiceImpl implements BookingService {
     // -------------------------------------------------------------------------
 
     private BookingCreatedPayload buildCreatedPayload(Booking booking) {
-        List<BookingItemEvent> items = booking.getItems().stream()
-                .map(this::toItemEvent)
-                .toList();
+        List<BookingItemEvent> items =
+                booking.getItems().stream().map(this::toItemEvent).toList();
         return new BookingCreatedPayload(
                 booking.getBookingId(),
                 booking.getUserId(),
                 items,
                 booking.getTravelers().size(),
-                new MoneyEvent(booking.getTotal().getAmount(), booking.getTotal().getCurrency()));
+                new MoneyEvent(
+                        booking.getTotal().getAmount(), booking.getTotal().getCurrency()));
     }
 
     /** Maps a booking item to its event form; hotel items carry the stay range (ADR-0010). */
     private BookingItemEvent toItemEvent(BookingItem item) {
         if (item instanceof HotelBookingItem hotel) {
-            return new BookingItemEvent(hotel.type().name(), hotel.getResourceId(), hotel.getQuantity(),
-                    hotel.getSubtotal(), hotel.getCheckIn(), hotel.getCheckOut());
+            return new BookingItemEvent(
+                    hotel.type().name(),
+                    hotel.getResourceId(),
+                    hotel.getQuantity(),
+                    hotel.getSubtotal(),
+                    hotel.getCheckIn(),
+                    hotel.getCheckOut());
         }
-        return new BookingItemEvent(item.type().name(), item.getResourceId(), item.getQuantity(),
-                item.getSubtotal(), null, null);
+        return new BookingItemEvent(
+                item.type().name(), item.getResourceId(), item.getQuantity(), item.getSubtotal(), null, null);
     }
 
     /** Writes a Booking lifecycle event (Confirmed/Failed/Expired) to the outbox (EVT-009). */
     private void publishLifecycle(Booking booking, EventType eventType) {
         var payload = new BookingLifecyclePayload(
-            booking.getBookingId(),
-            booking.getUserId(),
-            booking.getStatus().name());
+                booking.getBookingId(), booking.getUserId(), booking.getStatus().name());
         outboxEventWriter.write(
-            booking.getBookingId(),
-            eventType,
-            booking.getCorrelationId(),
-            booking.getSagaId().toString(),
-            payload);
+                booking.getBookingId(),
+                eventType,
+                booking.getCorrelationId(),
+                booking.getSagaId().toString(),
+                payload);
     }
 
     // -------------------------------------------------------------------------
@@ -601,8 +590,7 @@ public class BookingServiceImpl implements BookingService {
     // -------------------------------------------------------------------------
 
     private Booking findBooking(UUID bookingId) {
-        return bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new BookingNotFoundException(bookingId));
+        return bookingRepository.findById(bookingId).orElseThrow(() -> new BookingNotFoundException(bookingId));
     }
 
     private UUID extractUserId() {

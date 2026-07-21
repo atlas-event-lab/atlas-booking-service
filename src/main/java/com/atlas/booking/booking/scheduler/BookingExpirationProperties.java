@@ -1,8 +1,7 @@
 package com.atlas.booking.booking.scheduler;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-
 import java.time.Duration;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * Externalized deadline for the Booking expiration safety-net job
@@ -20,6 +19,4 @@ import java.time.Duration;
  * by the scheduler's {@code @Scheduled(fixedDelayString=...)} (same approach as OutboxRelay).
  */
 @ConfigurationProperties(prefix = "atlas.booking.expiration")
-public record BookingExpirationProperties(
-        Duration pendingTimeout
-) {}
+public record BookingExpirationProperties(Duration pendingTimeout) {}

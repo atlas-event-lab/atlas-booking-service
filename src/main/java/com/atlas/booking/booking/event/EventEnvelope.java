@@ -14,20 +14,12 @@ import java.util.UUID;
  * @param <T> the business payload type.
  */
 public record EventEnvelope<T>(
-    @NotNull
-    UUID eventId,
-
-    @NotBlank
-    String eventType,
-
-    Integer eventVersion,
-    Instant occurredAt,
-    String traceId,
-    String correlationId,
-    String sagaId,
-    String producer,
-
-    @Valid
-    @NotNull
-    T payload
-) {}
+        @NotNull UUID eventId,
+        @NotBlank String eventType,
+        Integer eventVersion,
+        Instant occurredAt,
+        String traceId,
+        String correlationId,
+        String sagaId,
+        String producer,
+        @Valid @NotNull T payload) {}

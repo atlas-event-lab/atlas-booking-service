@@ -30,10 +30,10 @@ public interface BookingMapper {
     default ApiBookingStatus toApiStatus(BookingStatus status) {
         return switch (status) {
             case PENDING, INVENTORY_RESERVED, PAYMENT_PENDING -> ApiBookingStatus.PENDING;
-            case CONFIRMED, CANCELLING                         -> ApiBookingStatus.CONFIRMED;
-            case CANCELLED                                     -> ApiBookingStatus.CANCELLED;
-            case FAILED                                        -> ApiBookingStatus.FAILED;
-            case EXPIRED                                       -> ApiBookingStatus.EXPIRED;
+            case CONFIRMED, CANCELLING -> ApiBookingStatus.CONFIRMED;
+            case CANCELLED -> ApiBookingStatus.CANCELLED;
+            case FAILED -> ApiBookingStatus.FAILED;
+            case EXPIRED -> ApiBookingStatus.EXPIRED;
         };
     }
 }

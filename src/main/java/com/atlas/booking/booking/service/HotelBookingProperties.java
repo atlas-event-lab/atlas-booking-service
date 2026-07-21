@@ -10,6 +10,4 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                      longer stays are rejected 400 (recommended 30, must match Search).
  */
 @ConfigurationProperties(prefix = "atlas.booking.hotel")
-public record HotelBookingProperties(
-        int maxStayNights
-) {}
+public record HotelBookingProperties(int maxStayNights) {}

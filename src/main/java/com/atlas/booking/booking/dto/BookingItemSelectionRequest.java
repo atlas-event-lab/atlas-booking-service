@@ -4,10 +4,9 @@ import com.atlas.booking.booking.client.dto.MoneyDto;
 import com.atlas.booking.booking.entity.BookingItemType;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-import org.springframework.format.annotation.DateTimeFormat;
-
 import java.time.LocalDate;
 import java.util.UUID;
+import org.springframework.format.annotation.DateTimeFormat;
 
 /**
  * Selected bookable item within a Create Booking request (booking.yaml BookingItemSelection).
@@ -15,25 +14,10 @@ import java.util.UUID;
  * omitted for FLIGHT items; cross-field validation lives in the service.
  */
 public record BookingItemSelectionRequest(
-
-        @NotNull
-        BookingItemType type,
-
-        @NotNull
-        UUID resourceId,
-
+        @NotNull BookingItemType type,
+        @NotNull UUID resourceId,
         UUID hotelId,
-
-        @NotNull
-        @Min(1)
-        Integer quantity,
-
-        @NotNull
-        MoneyDto unitPrice,
-
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-        LocalDate checkIn,
-
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-        LocalDate checkOut
-) {}
+        @NotNull @Min(1) Integer quantity,
+        @NotNull MoneyDto unitPrice,
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkIn,
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate checkOut) {}

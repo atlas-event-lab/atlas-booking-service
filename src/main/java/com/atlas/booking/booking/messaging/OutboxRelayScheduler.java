@@ -1,12 +1,11 @@
 package com.atlas.booking.booking.messaging;
 
+import java.time.Instant;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.SchedulingConfigurer;
 import org.springframework.scheduling.config.ScheduledTaskRegistrar;
-
-import java.time.Instant;
 
 /**
  * Adaptive scheduler for the outbox relay (ADR-0013). Polls fast while there is a backlog and

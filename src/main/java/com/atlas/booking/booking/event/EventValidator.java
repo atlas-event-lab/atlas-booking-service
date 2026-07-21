@@ -11,15 +11,14 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class EventValidator {
 
-  private final Validator validator;
+    private final Validator validator;
 
-  public <T> void validate(EventEnvelope<T> envelope) {
+    public <T> void validate(EventEnvelope<T> envelope) {
 
-    Set<ConstraintViolation<EventEnvelope<T>>> violations =
-        validator.validate(envelope);
+        Set<ConstraintViolation<EventEnvelope<T>>> violations = validator.validate(envelope);
 
-    if (!violations.isEmpty()) {
-      throw new ConstraintViolationException(violations);
+        if (!violations.isEmpty()) {
+            throw new ConstraintViolationException(violations);
+        }
     }
-  }
 }

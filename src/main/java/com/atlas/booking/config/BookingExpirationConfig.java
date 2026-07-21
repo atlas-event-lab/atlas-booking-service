@@ -2,11 +2,10 @@ package com.atlas.booking.config;
 
 import com.atlas.booking.booking.scheduler.BookingExpirationProperties;
 import com.atlas.booking.booking.service.HotelBookingProperties;
+import java.time.Clock;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.time.Clock;
 
 /**
  * Wires the Booking expiration job and hotel booking rules: binds

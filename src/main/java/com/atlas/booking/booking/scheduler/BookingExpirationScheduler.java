@@ -4,14 +4,13 @@ import com.atlas.booking.booking.entity.Booking;
 import com.atlas.booking.booking.entity.BookingStatus;
 import com.atlas.booking.booking.repository.BookingRepository;
 import com.atlas.booking.booking.service.BookingService;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-
-import java.time.Clock;
-import java.time.Instant;
-import java.util.List;
 
 /**
  * Safety-net scheduler that drives stale {@code PENDING} Bookings to {@code EXPIRED}
@@ -50,8 +49,7 @@ public class BookingExpirationScheduler {
     }
 
     private void expireStaleInState(BookingStatus status, Instant cutoff) {
-        List<Booking> stale =
-                bookingRepository.findTop100ByStatusAndUpdatedAtBeforeOrderByUpdatedAtAsc(status, cutoff);
+        List<Booking> stale = bookingRepository.findTop100ByStatusAndUpdatedAtBeforeOrderByUpdatedAtAsc(status, cutoff);
         if (stale.isEmpty()) {
             return;
         }

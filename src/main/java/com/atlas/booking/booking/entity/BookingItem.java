@@ -11,14 +11,13 @@ import jakarta.persistence.InheritanceType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
-
-import java.math.BigDecimal;
-import java.util.UUID;
 
 /**
  * A selected bookable item within a Booking (ADR-0010). Abstract base of a JPA {@code SINGLE_TABLE}
@@ -59,8 +58,8 @@ public abstract class BookingItem {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal subtotal;
 
-    protected BookingItem(UUID bookingItemId, UUID resourceId, Integer quantity,
-                          BigDecimal unitPrice, BigDecimal subtotal) {
+    protected BookingItem(
+            UUID bookingItemId, UUID resourceId, Integer quantity, BigDecimal unitPrice, BigDecimal subtotal) {
         this.bookingItemId = bookingItemId;
         this.resourceId = resourceId;
         this.quantity = quantity;

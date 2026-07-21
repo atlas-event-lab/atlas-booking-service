@@ -10,11 +10,11 @@ package com.atlas.booking.shared.messaging;
 public final class EventTopics {
 
     // ── Booking Service produces ──────────────────────────────────────────────
-    public static final String BOOKING_CREATED   = "booking.created";
+    public static final String BOOKING_CREATED = "booking.created";
     public static final String BOOKING_CONFIRMED = "booking.confirmed";
     public static final String BOOKING_CANCELLED = "booking.cancelled";
-    public static final String BOOKING_FAILED    = "booking.failed";
-    public static final String BOOKING_EXPIRED   = "booking.expired";
+    public static final String BOOKING_FAILED = "booking.failed";
+    public static final String BOOKING_EXPIRED = "booking.expired";
 
     // ── Booking Service consumes (owned by Inventory Service) ─────────────────
     public static final String INVENTORY_BOOKING_RESERVED = "inventory.reserved";
@@ -22,9 +22,9 @@ public final class EventTopics {
     public static final String INVENTORY_BOOKING_RELEASED = "inventory.released";
 
     // ── Booking Service consumes (owned by Payment Service) ───────────────────
-    public static final String PAYMENT_SUCCEEDED  = "payment.succeeded";
-    public static final String PAYMENT_FAILED     = "payment.failed";
-    public static final String PAYMENT_TIMED_OUT  = "payment.timed_out";
+    public static final String PAYMENT_SUCCEEDED = "payment.succeeded";
+    public static final String PAYMENT_FAILED = "payment.failed";
+    public static final String PAYMENT_TIMED_OUT = "payment.timed_out";
 
     private EventTopics() {}
 }

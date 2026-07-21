@@ -10,10 +10,4 @@ import java.util.UUID;
  * per night, ADR-0010) and null for FLIGHT items.
  */
 public record BookingItemEvent(
-        String type,
-        UUID resourceId,
-        Integer quantity,
-        BigDecimal amount,
-        LocalDate checkIn,
-        LocalDate checkOut
-) {}
+        String type, UUID resourceId, Integer quantity, BigDecimal amount, LocalDate checkIn, LocalDate checkOut) {}

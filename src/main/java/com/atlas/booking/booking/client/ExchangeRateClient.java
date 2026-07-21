@@ -5,12 +5,9 @@ import java.util.List;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 
-@FeignClient(
-    name = "frankfurter-api",
-    url = "${clients.frankfurter.base-url}"
-)
+@FeignClient(name = "frankfurter-api", url = "${clients.frankfurter.base-url}")
 public interface ExchangeRateClient {
 
-  @GetMapping("/v2/rates?base=USD")
-  List<ExchangeRateDto> getUSDExchangeRates();
+    @GetMapping("/v2/rates?base=USD")
+    List<ExchangeRateDto> getUSDExchangeRates();
 }

@@ -2,14 +2,13 @@ package com.atlas.booking.booking.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
+import java.math.BigDecimal;
+import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
-import lombok.AccessLevel;
-
-import java.math.BigDecimal;
 
 /**
  * Immutable monetary Value Object. Currency uses ISO-4217 codes.

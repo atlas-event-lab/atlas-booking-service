@@ -8,9 +8,4 @@ import java.util.UUID;
  * Only public statuses are exposed; the mapper translates internal saga states before
  * constructing this DTO.
  */
-public record BookingResponse(
-        UUID bookingId,
-        ApiBookingStatus status,
-        MoneyResponse total,
-        Instant createdAt
-) {}
+public record BookingResponse(UUID bookingId, ApiBookingStatus status, MoneyResponse total, Instant createdAt) {}

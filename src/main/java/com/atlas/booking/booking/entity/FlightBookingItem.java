@@ -2,11 +2,10 @@ package com.atlas.booking.booking.entity;
 
 import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
-
 import java.math.BigDecimal;
 import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 
 /**
  * A booked flight (ADR-0010). Carries no stay dates. Persisted in the shared {@code booking_items}
@@ -17,8 +16,8 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class FlightBookingItem extends BookingItem {
 
-    public FlightBookingItem(UUID bookingItemId, UUID resourceId, Integer quantity,
-                             BigDecimal unitPrice, BigDecimal subtotal) {
+    public FlightBookingItem(
+            UUID bookingItemId, UUID resourceId, Integer quantity, BigDecimal unitPrice, BigDecimal subtotal) {
         super(bookingItemId, resourceId, quantity, unitPrice, subtotal);
     }
 

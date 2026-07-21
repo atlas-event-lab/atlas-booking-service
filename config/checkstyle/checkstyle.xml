@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+  "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+  "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+  Atlas shared Checkstyle config (ADR-0012).
+  Formatting (indentation, wrapping, import order, whitespace) is owned by Spotless
+  (palantirJavaFormat). Checkstyle here enforces high-signal style/semantic rules that a
+  formatter does not cover. Keep it lean to stay low-noise.
+-->
+<module name="Checker">
+  <property name="charset" value="UTF-8"/>
+  <property name="severity" value="error"/>
+  <property name="fileExtensions" value="java"/>
+
+  <module name="LineLength">
+    <property name="max" value="120"/>
+    <property name="ignorePattern" value="^\s*//|^\s*\*|^import|^package"/>
+  </module>
+
+  <module name="TreeWalker">
+    <!-- imports -->
+    <module name="AvoidStarImport"/>
+    <module name="RedundantImport"/>
+    <module name="UnusedImports"/>
+    <!-- blocks & statements -->
+    <module name="NeedBraces"/>
+    <module name="EmptyStatement"/>
+    <module name="OneStatementPerLine"/>
+    <module name="UpperEll"/>
+    <!-- correctness -->
+    <module name="EqualsHashCode"/>
+    <!-- naming (default camelCase / PascalCase patterns) -->
+    <module name="MethodName"/>
+    <module name="TypeName"/>
+    <module name="ParameterName"/>
+    <module name="LocalVariableName"/>
+    <module name="PackageName"/>
+  </module>
+</module>

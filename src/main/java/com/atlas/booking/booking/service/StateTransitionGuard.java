@@ -3,7 +3,6 @@ package com.atlas.booking.booking.service;
 import com.atlas.booking.booking.entity.BookingStatus;
 import com.atlas.booking.booking.exception.InvalidStateTransitionException;
 import com.atlas.booking.booking.exception.PrematureSagaEventException;
-
 import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
@@ -16,19 +15,12 @@ import lombok.extern.slf4j.Slf4j;
 public final class StateTransitionGuard {
 
     private static final Map<BookingStatus, Set<BookingStatus>> ALLOWED = Map.of(
-            BookingStatus.PENDING, Set.of(
-                    BookingStatus.INVENTORY_RESERVED,
-                    BookingStatus.FAILED,
-                    BookingStatus.EXPIRED),
-            BookingStatus.INVENTORY_RESERVED, Set.of(
-                    BookingStatus.CONFIRMED,
-                    BookingStatus.FAILED,
-                    BookingStatus.EXPIRED),
-            BookingStatus.CONFIRMED, Set.of(
-                    BookingStatus.CANCELLING),
-            BookingStatus.CANCELLING, Set.of(
-                    BookingStatus.CANCELLED)
-    );
+            BookingStatus.PENDING,
+                    Set.of(BookingStatus.INVENTORY_RESERVED, BookingStatus.FAILED, BookingStatus.EXPIRED),
+            BookingStatus.INVENTORY_RESERVED,
+                    Set.of(BookingStatus.CONFIRMED, BookingStatus.FAILED, BookingStatus.EXPIRED),
+            BookingStatus.CONFIRMED, Set.of(BookingStatus.CANCELLING),
+            BookingStatus.CANCELLING, Set.of(BookingStatus.CANCELLED));
 
     private StateTransitionGuard() {}
 
@@ -63,8 +55,10 @@ public final class StateTransitionGuard {
      */
     public static void assertPaymentTransition(BookingStatus from, BookingStatus to) {
         if (from == BookingStatus.PENDING) {
-            log.warn("Premature payment Saga event: {} → {} before inventory.reserved; deferring (retry)",
-                    from.name(), to.name());
+            log.warn(
+                    "Premature payment Saga event: {} → {} before inventory.reserved; deferring (retry)",
+                    from.name(),
+                    to.name());
             throw new PrematureSagaEventException(from, to);
         }
         assertAllowed(from, to);

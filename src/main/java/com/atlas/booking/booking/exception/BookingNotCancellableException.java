@@ -1,7 +1,6 @@
 package com.atlas.booking.booking.exception;
 
 import com.atlas.booking.booking.entity.BookingStatus;
-
 import java.util.UUID;
 
 /**

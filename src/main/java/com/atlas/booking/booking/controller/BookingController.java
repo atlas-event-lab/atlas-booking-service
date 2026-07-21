@@ -5,6 +5,7 @@ import com.atlas.booking.booking.dto.CancelBookingRequest;
 import com.atlas.booking.booking.dto.CreateBookingRequest;
 import com.atlas.booking.booking.service.BookingService;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,8 +16,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.UUID;
 
 /**
  * REST controller for Booking endpoints (booking.yaml).
@@ -36,8 +35,7 @@ public class BookingController {
      */
     @PostMapping
     public ResponseEntity<BookingResponse> createBooking(
-            @RequestHeader("Idempotency-Key") String idempotencyKey,
-            @RequestBody @Valid CreateBookingRequest request) {
+            @RequestHeader("Idempotency-Key") String idempotencyKey, @RequestBody @Valid CreateBookingRequest request) {
 
         var result = bookingService.createBooking(idempotencyKey, request);
         HttpStatus status = result.isReplay() ? HttpStatus.OK : HttpStatus.CREATED;
