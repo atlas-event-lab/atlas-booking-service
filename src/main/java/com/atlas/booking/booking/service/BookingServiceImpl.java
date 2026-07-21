@@ -512,7 +512,9 @@ public class BookingServiceImpl implements BookingService {
     }
 
     private BigDecimal getRateConversionToUSD(String currency) {
-        if (currency.equals(CURRENCY_USD)) return BigDecimal.ONE;
+        if (currency.equals(CURRENCY_USD)) {
+            return BigDecimal.ONE;
+        }
         List<ExchangeRateDto> exchangeRates;
 
         try {
