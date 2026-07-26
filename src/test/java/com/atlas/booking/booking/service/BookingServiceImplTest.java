@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import feign.FeignException;
 import feign.Request;
 import feign.RequestTemplate;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -93,7 +94,8 @@ class BookingServiceImplTest {
                 bookingMapper,
                 exchangeRateService,
                 new HotelBookingProperties(30),
-                clock);
+                clock,
+                new SimpleMeterRegistry());
 
         Jwt jwt = Jwt.withTokenValue("token")
                 .header("alg", "RS256")

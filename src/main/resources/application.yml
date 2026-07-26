@@ -125,6 +125,16 @@ management:
       # p95/p99 and draw per-endpoint latency heatmaps (RED / APM). Roadmap Phase 6/7.
       percentiles-histogram:
         http.server.requests: true
+        # End-to-end Saga latency (creation → terminal state). Without buckets a Timer only
+        # publishes count/sum/max, and histogram_quantile() cannot compute p95 — which is the
+        # whole point of the metric: under load the synchronous POST stays fast while this
+        # asynchronous tail stretches. See Experiment 01 (booking-observability.md).
+        atlas.booking.saga.duration: true
+      maximum-expected-value:
+        # Default Timer buckets top out at 30s. A Saga past the scaling knee can exceed that,
+        # and everything above the top bucket collapses into +Inf — precisely the tail we are
+        # trying to measure. 5m keeps the degraded range resolvable.
+        atlas.booking.saga.duration: 5m
       slo:
         http.server.requests: 50ms,100ms,200ms,300ms,500ms,1s,2s,5s
   endpoints:

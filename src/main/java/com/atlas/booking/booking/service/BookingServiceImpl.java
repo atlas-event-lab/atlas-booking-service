@@ -42,11 +42,13 @@ import com.atlas.booking.shared.messaging.EventType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import feign.FeignException;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -76,6 +78,13 @@ public class BookingServiceImpl implements BookingService {
     private static final String CURRENCY_USD = "USD";
     private static final int CONVERSION_SCALE = 6;
 
+    /** Bookings reaching a terminal state, tagged by which one. The real success rate. */
+    private static final String M_OUTCOMES = "atlas.booking.outcomes";
+    /** Wall-clock from booking creation to its terminal state — the end-to-end Saga latency. */
+    private static final String M_SAGA_DURATION = "atlas.booking.saga.duration";
+
+    private static final String KEY_TAG_STATE = "state";
+
     private final BookingRepository bookingRepository;
     private final ConsumedEventRepository consumedEventRepository;
     private final FlightPriceClient flightPriceClient;
@@ -86,6 +95,7 @@ public class BookingServiceImpl implements BookingService {
     private final ExchangeRateService exchangeRateService;
     private final HotelBookingProperties hotelBookingProperties;
     private final Clock clock;
+    private final MeterRegistry meterRegistry;
 
     // -------------------------------------------------------------------------
     // REST handlers
@@ -259,6 +269,8 @@ public class BookingServiceImpl implements BookingService {
         consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.INVENTORY_REJECTED));
         publishLifecycle(booking, EventType.BOOKING_FAILED);
 
+        recordTerminal(booking);
+
         log.info("Booking transitioned to FAILED (InventoryRejected): bookingId={}", bookingId);
     }
 
@@ -281,6 +293,8 @@ public class BookingServiceImpl implements BookingService {
         consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.PAYMENT_SUCCEEDED));
         publishLifecycle(booking, EventType.BOOKING_CONFIRMED);
 
+        recordTerminal(booking);
+
         log.info("Booking transitioned to CONFIRMED: bookingId={}, paymentId={}", bookingId, paymentId);
     }
 
@@ -301,6 +315,8 @@ public class BookingServiceImpl implements BookingService {
         consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.PAYMENT_FAILED));
         publishLifecycle(booking, EventType.BOOKING_FAILED);
 
+        recordTerminal(booking);
+
         log.info("Booking transitioned to FAILED (PaymentFailed): bookingId={}", bookingId);
     }
 
@@ -320,6 +336,8 @@ public class BookingServiceImpl implements BookingService {
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.EXPIRED));
         consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.PAYMENT_TIMEOUT));
         publishLifecycle(booking, EventType.BOOKING_EXPIRED);
+
+        recordTerminal(booking);
 
         log.info("Booking transitioned to EXPIRED (PaymentTimedOut): bookingId={}", bookingId);
     }
@@ -348,6 +366,8 @@ public class BookingServiceImpl implements BookingService {
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.CANCELLED));
         consumedEventRepository.save(new ConsumedEvent(eventId, ConsumerEventType.INVENTORY_RELEASED));
 
+        recordTerminal(booking);
+
         log.info("Booking transitioned to CANCELLED (InventoryReleased): bookingId={}", bookingId);
     }
 
@@ -371,6 +391,8 @@ public class BookingServiceImpl implements BookingService {
         booking.setStatus(BookingStatus.EXPIRED);
         booking.addStatusHistory(new BookingStatusHistory(UUID.randomUUID(), from, BookingStatus.EXPIRED));
         publishLifecycle(booking, EventType.BOOKING_EXPIRED);
+
+        recordTerminal(booking);
 
         log.info("Booking expired by scheduler: bookingId={}, from={}", bookingId, from);
     }
@@ -585,6 +607,30 @@ public class BookingServiceImpl implements BookingService {
                 booking.getCorrelationId(),
                 booking.getSagaId().toString(),
                 payload);
+    }
+
+    /**
+     * Records that a Booking reached a terminal state: one counter increment tagged with the
+     * state, and the end-to-end Saga duration (creation → now).
+     *
+     * <p>Call this at EVERY terminal transition (CONFIRMED, FAILED, EXPIRED, CANCELLED) and
+     * nowhere else. Intermediate states such as INVENTORY_RESERVED are deliberately excluded:
+     * counting them would make the outcome totals unusable as a success rate, and a Saga that
+     * is still in flight has no duration yet.
+     *
+     * <p>Together the two answer the questions Experiment 01 actually asks — what fraction of
+     * bookings truly succeed, and how far the asynchronous tail stretches under load — neither
+     * of which the synchronous HTTP metrics can see.
+     */
+    private void recordTerminal(Booking booking) {
+        String state = booking.getStatus().name();
+        meterRegistry.counter(M_OUTCOMES, KEY_TAG_STATE, state).increment();
+
+        Instant createdAt = booking.getCreatedAt();
+        if (createdAt == null) {
+            return;
+        }
+        meterRegistry.timer(M_SAGA_DURATION, KEY_TAG_STATE, state).record(Duration.between(createdAt, clock.instant()));
     }
 
     // -------------------------------------------------------------------------
