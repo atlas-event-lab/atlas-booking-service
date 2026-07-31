@@ -19,6 +19,9 @@ spring:
     hikari:
       connection-timeout: 20000
       maximum-pool-size: 10
+      # Runtime traffic is multiplexed through the PgBouncer pooler; pods hold no warm
+      # idle server connections (relieves cluster max_connections under HPA/KEDA scale-out).
+      minimum-idle: 0
 
   jpa:
     hibernate:
@@ -29,6 +32,12 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+    # Flyway keeps a DIRECT connection to Postgres (bypasses the PgBouncer pooler): in
+    # transaction pool mode Flyway's session-level migration lock is unsafe. Reuses the
+    # service role; local/compose fall back to DB_URL (no pooler there).
+    url: ${FLYWAY_DB_URL:${DB_URL:jdbc:postgresql://localhost:5432/booking_db}}
+    user: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
 
   data:
     redis:

@@ -49,29 +49,47 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
-    name: Deploy (helm upgrade)
+  # GitOps promotion: write the immutable image tag into the GitOps repo `atlas`.
+  # Requires the GitHub App (Contents: read/write) installed on the `atlas` repo,
+  # exposed as vars.CI_BOT_APP_ID + secrets.CI_BOT_APP_PRIVATE_KEY.
+  promote:
+    name: Promote (write-back tag to the atlas GitOps repo)
     needs: image
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: promote-${{ github.repository }}
+      cancel-in-progress: false
     steps:
-      - name: Checkout GitOps chart + values
+      - name: Mint a scoped token for the atlas GitOps repo
+        uses: actions/create-github-app-token@v1
+        id: apptoken
+        with:
+          app-id: ${{ vars.CI_BOT_APP_ID }}
+          private-key: ${{ secrets.CI_BOT_APP_PRIVATE_KEY }}
+          owner: atlas-event-lab
+          repositories: atlas
+      - name: Checkout the atlas GitOps repo (desired state)
         uses: actions/checkout@v4
         with:
-          repository: atlas-event-lab/atlas-gitops
+          repository: atlas-event-lab/atlas
+          token: ${{ steps.apptoken.outputs.token }}
           path: gitops
-          # token: ${{ secrets.GITOPS_TOKEN }}   # uncomment if atlas-gitops is private
-      - uses: azure/setup-helm@v4
-      - name: Configure kubeconfig
+      - name: Bump image tag and push (rebase-retry for concurrent services)
         run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
-      - name: Helm upgrade with the immutable image tag
-        run: |
+          set -euo pipefail
           REPO="${GITHUB_REPOSITORY#*/}"      # atlas-booking-service
           NAME="${REPO#atlas-}"              # booking-service   (helm release)
           VALUES="${NAME%-service}"          # booking           (values/<svc>.yaml)
-          helm upgrade --install "$NAME" gitops/charts/atlas-service \
-            -f "gitops/charts/atlas-service/values/${VALUES}.yaml" -n atlas-apps \
-            --set image.tag="sha-${GITHUB_SHA}" \
-            --wait --timeout 5m
+          FILE="gitops/deploy/helm/atlas-service/values/${VALUES}.yaml"
+          yq -i ".image.tag = \"sha-${GITHUB_SHA}\"" "$FILE"
+          cd gitops
+          git config user.name  "${{ steps.apptoken.outputs.app-slug }}[bot]"
+          git config user.email "${{ steps.apptoken.outputs.app-slug }}[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(deploy): ${NAME} -> sha-${GITHUB_SHA}" || { echo "already up to date"; exit 0; }
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin main && git push origin HEAD:main; then exit 0; fi
+            sleep $(( (RANDOM % 5) + 1 ))
+          done
+          echo "::error::could not push tag bump to the atlas GitOps repo after 5 attempts"; exit 1
