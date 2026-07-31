@@ -38,6 +38,12 @@ spring:
     url: ${FLYWAY_DB_URL:${DB_URL:jdbc:postgresql://localhost:5432/booking_db}}
     user: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:postgres}
+    # The CNPG pooler's automatic auth_query creates a public.user_search function in every DB,
+    # so `public` is non-empty before V1 runs. Adopt the schema: baseline at 0 (NOT the default 1,
+    # which would skip V1). Only fires on the first run; no-op once the history table exists; inert
+    # locally where `public` is empty. See ADR-0033.
+    baseline-on-migrate: true
+    baseline-version: "0"
 
   data:
     redis:
