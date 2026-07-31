@@ -130,7 +130,10 @@ management:
         fields:
           - correlationId
     sampling:
-      probability: 1.0
+      # Parent-based: the entry service's decision propagates via traceparent, so the whole Saga
+      # samples coherently. 0.1 default bounds span volume (esp. per-SQL JDBC spans) so Tempo
+      # survives load; bump TRACING_SAMPLING to 1.0 via env for a focused debug run.
+      probability: ${TRACING_SAMPLING:0.1}
   otlp:
     tracing:
       endpoint: ${MANAGEMENT_OTLP_TRACING_ENDPOINT:http://tempo.atlas-observability:4318/v1/traces}

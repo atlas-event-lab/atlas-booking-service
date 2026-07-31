@@ -17,9 +17,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
@@ -41,14 +42,30 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@TestPropertySource(properties = {"spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false"})
+@TestPropertySource(
+        properties = {
+            "spring.jpa.hibernate.ddl-auto=create-drop",
+            "spring.flyway.enabled=false",
+            // datasource-micrometer wraps the DataSource in a proxy that breaks @ServiceConnection
+            // wiring in this @DataJpaTest slice — intermittently, by test order: the datasource falls
+            // back to the app default (localhost:5432) instead of the Testcontainers Postgres, so the
+            // context fails to connect. This test exercises the SKIP LOCKED claim query, not JDBC
+            // observability, so turn the proxy off here.
+            "jdbc.datasource-proxy.enabled=false"
+        })
 @Import(OutboxSkipLockedConcurrencyTest.AuditingConfig.class)
 @Testcontainers
 class OutboxSkipLockedConcurrencyTest {
 
     @Container
-    @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+
+    @DynamicPropertySource
+    static void datasourceProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+    }
 
     @Autowired
     OutboxRepository outboxRepository;
