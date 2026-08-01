@@ -18,10 +18,8 @@ spring:
     password: ${DB_PASSWORD:postgres}
     hikari:
       connection-timeout: 20000
-      maximum-pool-size: 10
-      # Runtime traffic is multiplexed through the PgBouncer pooler; pods hold no warm
-      # idle server connections (relieves cluster max_connections under HPA/KEDA scale-out).
-      minimum-idle: 0
+      maximum-pool-size: 15
+      minimum-idle: 5
 
   jpa:
     hibernate:
